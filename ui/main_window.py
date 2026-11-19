@@ -1,165 +1,287 @@
-import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, List
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QTableView,
-    QFileDialog, QLabel, QMessageBox, QHBoxLayout, QLineEdit, QComboBox
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QTabWidget,
+    QMessageBox,
+    QFileDialog,
 )
-from PyQt6.QtCore import Qt
-from models.employee import Employee
+from PyQt6.QtGui import QIcon, QAction
+
+from ui.dashboard import Dashboard
+from ui.employee_view import EmployeeView
+from ui.import_view import ImportView
+from ui.validation_view import ValidationView
+
+from database.connection import DatabaseConnection
 from database.employee_repository import EmployeeRepository
-from services.csv_importer import import_csv
-from services.data_validator import validate_employee
-from services.csv_exporter import export_to_csv, export_to_json
-from services.report_generator import generate_validation_report
-from ui.employee_table_model import EmployeeTableModel
+from models.employee import Employee
+from models.validation_result import ValidationResult
+from services.csv_importer import CsvImporter
+from services.csv_exporter import CsvExporter
+from services.data_validator import DataValidator
+from services.report_generator import ReportGenerator
+from services.statistics_service import StatisticsService
+
 
 class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
+    """Das Hauptfenster der Anwendung 'DataQuality Manager'."""
+
+    def __init__(
+        self,
+        db: Optional[DatabaseConnection] = None,
+        parent: Optional[QWidget] = None,
+    ):
+        super().__init__(parent)
+
         self.setWindowTitle("DataQuality Manager")
-        self.setGeometry(100, 100, 1000, 600)
-        self.db_repo = EmployeeRepository()
-        self.init_ui()
+        self.setWindowIcon(QIcon.fromTheme("applications-development"))
+        self.resize(1400, 900)
 
-    def init_ui(self):
-        layout = QVBoxLayout()
+        if db is None:
+            self.db = DatabaseConnection("data/dataquality.db")
+            self.db.create_tables("database/schema.sql")
+        else:
+            self.db = db
 
-        # Header
-        header_layout = QHBoxLayout()
-        self.import_button = QPushButton("CSV importieren")
-        self.import_button.clicked.connect(self.on_import_csv)
-        header_layout.addWidget(self.import_button)
+        self.repository = EmployeeRepository(self.db)
+        self.importer = CsvImporter()
+        self.exporter = CsvExporter()
+        self.validator = DataValidator()
+        self.report_generator = ReportGenerator()
+        self.stats_service = StatisticsService()
 
-        self.export_csv_button = QPushButton("Als CSV exportieren")
-        self.export_csv_button.clicked.connect(self.on_export_csv)
-        header_layout.addWidget(self.export_csv_button)
+        self.employees: List[Employee] = []
+        self.validation_results: List[ValidationResult] = []
 
-        self.export_json_button = QPushButton("Als JSON exportieren")
-        self.export_json_button.clicked.connect(self.on_export_json)
-        header_layout.addWidget(self.export_json_button)
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QVBoxLayout(central_widget)
 
-        self.report_button = QPushButton("Validierungsbericht generieren")
-        self.report_button.clicked.connect(self.on_generate_report)
-        header_layout.addWidget(self.report_button)
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setTabPosition(QTabWidget.TabPosition.North)
+        self.tab_widget.setTabShape(QTabWidget.TabShape.Rounded)
+        self.tab_widget.setUsesScrollButtons(True)
 
-        layout.addLayout(header_layout)
+        self.dashboard = Dashboard(show_duplicates=True)
+        self.employee_view = EmployeeView()
+        self.import_view = ImportView()
+        self.validation_view = ValidationView()
 
-        # Suche und Filter
-        search_layout = QHBoxLayout()
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Name oder E-Mail suchen...")
-        self.search_input.textChanged.connect(self.on_search)
-        search_layout.addWidget(self.search_input)
+        self.tab_widget.addTab(
+            self.dashboard, QIcon.fromTheme("view-statistics"), "Dashboard"
+        )
+        self.tab_widget.addTab(
+            self.employee_view, QIcon.fromTheme("x-office-contact"), "Mitarbeiter"
+        )
+        self.tab_widget.addTab(
+            self.import_view, QIcon.fromTheme("document-import"), "Import"
+        )
+        self.tab_widget.addTab(
+            self.validation_view, QIcon.fromTheme("dialog-information"), "Validierung"
+        )
 
-        self.department_filter = QComboBox()
-        self.department_filter.addItems(["Alle", "IT", "HR", "Finanzen", "Marketing"])
-        self.department_filter.currentTextChanged.connect(self.on_filter)
-        search_layout.addWidget(self.department_filter)
+        main_layout.addWidget(self.tab_widget)
 
-        self.valid_filter = QComboBox()
-        self.valid_filter.addItems(["Alle", "Valid", "Invalid"])
-        self.valid_filter.currentTextChanged.connect(self.on_filter)
-        search_layout.addWidget(self.valid_filter)
+        self._create_menu_bar()
+        self._connect_signals()
+        self.refresh_all_views()
 
-        layout.addLayout(search_layout)
+    def _create_menu_bar(self) -> None:
+        """Erstellt die Menüleiste für Export-Funktionen."""
+        menu_bar = self.menuBar()
+        file_menu = menu_bar.addMenu("Datei")
 
-        # Tabelle
-        self.table_view = QTableView()
-        self.table_view.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
-        layout.addWidget(self.table_view)
+        export_csv_action = QAction("Mitarbeiter als CSV exportieren...", self)
+        export_csv_action.triggered.connect(self._on_export_csv)
+        file_menu.addAction(export_csv_action)
 
-        # Statuslabel
-        self.status_label = QLabel("Bereit")
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.status_label)
+        export_valid_csv_action = QAction(
+            "Nur gültige Mitarbeiter als CSV exportieren...", self
+        )
+        export_valid_csv_action.triggered.connect(
+            lambda: self._on_export_csv(only_valid=True)
+        )
+        file_menu.addAction(export_valid_csv_action)
 
-        container = QWidget()
-        container.setLayout(layout)
-        self.setCentralWidget(container)
+        export_json_action = QAction("JSON-Qualitätsbericht exportieren...", self)
+        export_json_action.triggered.connect(self._on_export_json_report)
+        file_menu.addAction(export_json_action)
 
-        # Tabelle initial laden
-        self.load_employees()
+        export_errors_action = QAction("Validierungsfehler als CSV exportieren...", self)
+        export_errors_action.triggered.connect(self._on_export_validation_errors)
+        file_menu.addAction(export_errors_action)
 
-    def load_employees(self):
-        employees = self.db_repo.get_all_employees()
-        self.table_view.setModel(EmployeeTableModel(employees))
+    def _connect_signals(self) -> None:
+        """Verbindet die Signale der Views mit den Anwendungs-Slots."""
+        self.employee_view.employee_added.connect(self._on_employee_added)
+        self.employee_view.employee_edited.connect(self._on_employee_edited)
+        self.employee_view.employee_deleted.connect(self._on_employee_deleted)
+        self.import_view.import_confirmed.connect(self._on_import_confirmed)
 
-    def on_import_csv(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "CSV-Datei auswählen", "", "CSV Files (*.csv)")
-        if file_path:
-            try:
-                employees = import_csv(file_path)
-                valid_count = 0
-                invalid_count = 0
-                for emp in employees:
-                    validation_result = validate_employee(emp)
-                    emp.is_valid = validation_result.is_valid
-                    emp.errors = validation_result.errors
-                    self.db_repo.add_employee(emp)
-                    if emp.is_valid:
-                        valid_count += 1
-                    else:
-                        invalid_count += 1
-                self.load_employees()
-                self.status_label.setText(f"Importiert: {len(employees)} Mitarbeiter ({valid_count} gültig, {invalid_count} ungültig)")
-            except Exception as e:
-                QMessageBox.critical(self, "Fehler", f"Fehler beim Import: {e}")
+    def refresh_all_views(self) -> None:
+        """Lädt Daten aus der Datenbank, validiert sie und aktualisiert alle Views."""
+        try:
+            self.employees = self.repository.get_all()
+            self.validation_results = self.validator.validate_all(self.employees)
 
-    def on_export_csv(self):
-        employees = self.db_repo.get_all_employees()
-        file_path, _ = QFileDialog.getSaveFileName(self, "CSV-Datei speichern", "", "CSV Files (*.csv)")
-        if file_path:
-            export_to_csv(employees, file_path)
-            self.status_label.setText(f"Exportiert nach {file_path}")
+            for emp in self.employees:
+                if emp.id is not None:
+                    self.repository.update(emp)
 
-    def on_export_json(self):
-        employees = self.db_repo.get_all_employees()
-        file_path, _ = QFileDialog.getSaveFileName(self, "JSON-Datei speichern", "", "JSON Files (*.json)")
-        if file_path:
-            export_to_json(employees, file_path)
-            self.status_label.setText(f"Exportiert nach {file_path}")
+            self.employee_view.set_employees(self.employees)
+            self.validation_view.set_validation_results(
+                self.validation_results, self.employees
+            )
 
-    def on_generate_report(self):
-        employees = self.db_repo.get_all_employees()
-        file_path, _ = QFileDialog.getSaveFileName(self, "Validierungsbericht speichern", "", "JSON Files (*.json)")
-        if file_path:
-            generate_validation_report(employees, file_path)
-            self.status_label.setText(f"Validierungsbericht generiert: {file_path}")
+            stats = self.stats_service.get_statistics_as_dict(employees=self.employees)
+            self.dashboard.update_stats(
+                total=stats["total"],
+                valid=stats["valid"],
+                warnings=stats["warnings"],
+                errors=stats["errors"],
+                duplicates=stats["duplicates"],
+            )
+        except Exception as e:
+            self.show_error(f"Fehler beim Laden der Daten:\n{e}")
 
-    def on_search(self, text: str):
-        model = self.table_view.model()
-        if model:
-            for row in range(model.rowCount(None)):
-                name = model.data(model.index(row, 0), Qt.ItemDataRole.DisplayRole)
-                email = model.data(model.index(row, 1), Qt.ItemDataRole.DisplayRole)
-                if text.lower() not in name.lower() and text.lower() not in email.lower():
-                    self.table_view.setRowHidden(row, True)
+    def _on_import_confirmed(self, file_path: str) -> None:
+        """Importiert die CSV-Datei, validiert Datensätze und speichert sie in SQLite."""
+        try:
+            imported_employees = self.importer.import_employees(file_path)
+            if not imported_employees:
+                self.show_error("Keine gültigen Datensätze zum Importieren gefunden.")
+                return
+
+            combined = self.employees + imported_employees
+            self.validator.validate_all(combined)
+
+            imported_count = 0
+            rejected_count = 0
+
+            for emp in imported_employees:
+                emp_id = self.repository.add(emp)
+                emp.id = emp_id
+                if emp.status == "INVALID":
+                    rejected_count += 1
                 else:
-                    self.table_view.setRowHidden(row, False)
+                    imported_count += 1
 
-    def on_filter(self):
-        model = self.table_view.model()
-        if model:
-            department = self.department_filter.currentText()
-            valid_status = self.valid_filter.currentText()
+            all_results = self.validator.validate_all(self.repository.get_all())
+            imported_ids = {e.id for e in imported_employees}
+            for res in all_results:
+                if res.employee_id in imported_ids:
+                    self.repository.add_validation_result(res)
 
-            for row in range(model.rowCount(None)):
-                dept = model.data(model.index(row, 3), Qt.ItemDataRole.DisplayRole)
-                is_valid = model.data(model.index(row, 5), Qt.ItemDataRole.DisplayRole) == "Ja"
+            self.repository.add_import_history(
+                filename=Path(file_path).name,
+                import_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                records_imported=imported_count,
+                records_rejected=rejected_count,
+            )
 
-                dept_match = department == "Alle" or dept == department
-                valid_match = valid_status == "Alle" or (valid_status == "Valid" and is_valid) or (valid_status == "Invalid" and not is_valid)
+            self.refresh_all_views()
+            self.tab_widget.setCurrentWidget(self.employee_view)
+            self.show_info(
+                f"Import abgeschlossen:\n"
+                f"- Gesamt verarbeitet: {len(imported_employees)}\n"
+                f"- Gültig / Warnung: {imported_count}\n"
+                f"- Mit Fehlern: {rejected_count}"
+            )
+        except Exception as e:
+            self.show_error(f"Fehler beim Importieren:\n{e}")
 
-                if not (dept_match and valid_match):
-                    self.table_view.setRowHidden(row, True)
-                else:
-                    self.table_view.setRowHidden(row, False)
+    def _on_employee_added(self, employee: Employee) -> None:
+        """Speichert einen neu angelegten Mitarbeiter in der Datenbank."""
+        try:
+            self.repository.add(employee)
+            self.refresh_all_views()
+            self.show_info(
+                f"Neuer Mitarbeiter '{employee.first_name} {employee.last_name}' hinzugefügt."
+            )
+        except Exception as e:
+            self.show_error(f"Fehler beim Hinzufügen:\n{e}")
 
-    def closeEvent(self, event):
-        self.db_repo.close()
-        event.accept()
+    def _on_employee_edited(self, employee: Employee) -> None:
+        """Aktualisiert einen bearbeiteten Mitarbeiter in der Datenbank."""
+        try:
+            self.repository.update(employee)
+            self.refresh_all_views()
+            self.show_info(
+                f"Mitarbeiter '{employee.first_name} {employee.last_name}' aktualisiert."
+            )
+        except Exception as e:
+            self.show_error(f"Fehler beim Aktualisieren:\n{e}")
 
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec())
+    def _on_employee_deleted(self, employee_id: int) -> None:
+        """Löscht einen Mitarbeiter aus der Datenbank."""
+        try:
+            self.repository.delete(employee_id)
+            self.refresh_all_views()
+            self.show_info("Mitarbeiter wurde gelöscht.")
+        except Exception as e:
+            self.show_error(f"Fehler beim Löschen:\n{e}")
+
+    def _on_export_csv(self, only_valid: bool = False) -> None:
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Mitarbeiter als CSV speichern",
+            "reports/employees_export.csv",
+            "CSV-Dateien (*.csv)",
+        )
+        if not file_path:
+            return
+
+        data = (
+            [e for e in self.employees if e.status == "VALID"]
+            if only_valid
+            else self.employees
+        )
+        if self.exporter.export(data, filename=file_path):
+            self.show_info(f"CSV-Export erfolgreich gespeichert unter:\n{file_path}")
+        else:
+            self.show_error("CSV-Export ist fehlgeschlagen.")
+
+    def _on_export_json_report(self) -> None:
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "JSON-Qualitätsbericht speichern",
+            "reports/quality_report.json",
+            "JSON-Dateien (*.json)",
+        )
+        if not file_path:
+            return
+
+        if self.report_generator.generate_from_employees(
+            self.employees, self.validation_results, filename=file_path, directory=None
+        )    def _on_export_validation_errors(self) -> None:
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Validierungsfehler als CSV speichern",
+            "reports/validation_errors.csv",
+            "CSV-Dateien (*.csv)",
+        )
+        if not file_path:
+            return
+
+        if self.exporter.export_validation_errors(
+            self.validation_results, filename=file_path
+        ):
+            self.show_info(f"Validierungsfehler gespeichert unter:\n{file_path}")
+        else:
+            self.show_error("Fehler beim Exportieren der Validierungsfehler.")
+
+    def show_error(self, message: str) -> None:
+        QMessageBox.critical(self, "Fehler", message)
+
+    def show_info(self, message: str) -> None:
+        QMessageBox.information(self, "Information", message)
+
+    def closeEvent(self, event) -> None:
+        """Schließt die Datenbankverbindung sauber beim Beenden."""
+        if self.db:
+            self.db.close()
+        super().closeEvent(event)

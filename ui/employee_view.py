@@ -1,39 +1,257 @@
-from PyQt6.QtCore import QAbstractTableModel, Qt
+from PyQt6.QtWidgets import (
+    QWidget,
+    QPushButton,
+    QVBoxLayout,
+    QHBoxLayout,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QMessageBox,
+    QAbstractItemView,
+    QLineEdit,
+    QComboBox,
+    QLabel,
+    QDialog,
+    QFormLayout,
+    QDialogButtonBox,
+)
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QIcon, QColor
+from typing import Optional, List
 from models.employee import Employee
 
-class EmployeeTableModel(QAbstractTableModel):
-    def __init__(self, employees: list[Employee]):
-        super().__init__()
-        self.employees = employees
 
-    def data(self, index, role):
-        if role == Qt.ItemDataRole.DisplayRole:
-            employee = self.employees[index.row()]
-            if index.column() == 0:
-                return employee.name
-            elif index.column() == 1:
-                return employee.email
-            elif index.column() == 2:
-                return employee.phone
-            elif index.column() == 3:
-                return employee.department
-            elif index.column() == 4:
-                return employee.hire_date
-            elif index.column() == 5:
-                return "Ja" if employee.is_valid else "Nein"
-            elif index.column() == 6:
-                return "; ".join(employee.errors) if employee.errors else "-"
+class EmployeeFormDialog(QDialog):
+    """Dialog zum Hinzufügen oder Bearbeiten eines Mitarbeiters."""
 
-    def rowCount(self, index):
-        return len(self.employees)
+    def __init__(
+        self, employee: Optional[Employee] = None, parent: Optional[QWidget] = None
+    ):
+        super().__init__(parent)
+        self.employee = employee or Employee()
+        self.setWindowTitle(
+            "Mitarbeiter bearbeiten" if self.employee.id else "Neuer Mitarbeiter"
+        )
+        self.setMinimumWidth(380)
 
-    def columnCount(self, index):
-        return 7
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
 
-    def headerData(self, section, orientation, role):
-        if role == Qt.ItemDataRole.DisplayRole and orientation == Qt.Orientation.Horizontal:
-            headers = [
-                "Name", "E-Mail", "Telefon", "Abteilung",
-                "Einstellungsdatum", "Valid", "Fehler"
-            ]
-            return headers[section]
+        self.first_name_input = QLineEdit(self.employee.first_name)
+        self.last_name_input = QLineEdit(self.employee.last_name)
+        self.email_input = QLineEdit(self.employee.email)
+        self.phone_input = QLineEdit(self.employee.phone)
+        self.department_input = QLineEdit(self.employee.department)
+        self.birth_date_input = QLineEdit(self.employee.birth_date)
+        self.birth_date_input.setPlaceholderText("YYYY-MM-DD")
+        self.hire_date_input = QLineEdit(self.employee.hire_date)
+        self.hire_date_input.setPlaceholderText("YYYY-MM-DD")
+
+        form.addRow("Vorname*:", self.first_name_input)
+        form.addRow("Nachname*:", self.last_name_input)
+        form.addRow("E-Mail*:", self.email_input)
+        form.addRow("Telefon:", self.phone_input)
+        form.addRow("Abteilung:", self.department_input)
+        form.addRow("Geburtsdatum:", self.birth_date_input)
+        form.addRow("Einstellungsdatum:", self.hire_date_input)
+
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def get_employee(self) -> Employee:
+        return Employee(
+            id=self.employee.id,
+            first_name=self.first_name_input.text().strip(),
+            last_name=self.last_name_input.text().strip(),
+            email=self.email_input.text().strip(),
+            phone=self.phone_input.text().strip(),
+            department=self.department_input.text().strip(),
+            birth_date=self.birth_date_input.text().strip(),
+            hire_date=self.hire_date_input.text().strip(),
+            status=self.employee.status,
+        )
+
+
+class EmployeeView(QWidget):
+    """Eine View für die Anzeige, Suche, Filterung und Verwaltung von Mitarbeiterdaten."""
+
+    employee_selected = pyqtSignal(int)
+    employee_added = pyqtSignal(Employee)
+    employee_edited = pyqtSignal(Employee)
+    employee_deleted = pyqtSignal(int)
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self._all_employees: List[Employee] = []
+
+        self.setWindowTitle("Mitarbeiterverwaltung")
+        self.setWindowIcon(QIcon.fromTheme("view-list-details"))
+
+        main_layout = QVBoxLayout()
+
+        # Such- und Filterleiste
+        filter_layout = QHBoxLayout()
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Suche nach Name oder E-Mail...")
+        self.department_filter = QComboBox()
+        self.department_filter.addItem("Alle Abteilungen")
+        self.status_filter = QComboBox()
+        self.status_filter.addItems(["Alle Status", "VALID", "WARNING", "INVALID"])
+
+        filter_layout.addWidget(QLabel("Suche:"))
+        filter_layout.addWidget(self.search_input)
+        filter_layout.addWidget(QLabel("Abteilung:"))
+        filter_layout.addWidget(self.department_filter)
+        filter_layout.addWidget(QLabel("Status:"))
+        filter_layout.addWidget(self.status_filter)
+
+        # Aktions-Buttons
+        button_layout = QHBoxLayout()
+        self.add_button = self._create_button("Neu", "list-add")
+        self.edit_button = self._create_button("Bearbeiten", "document-edit")
+        self.delete_button = self._create_button("Löschen", "edit-delete")
+
+        button_layout.addWidget(self.add_button)
+        button_layout.addWidget(self.edit_button)
+        button_layout.addWidget(self.delete_button)
+        button_layout.addStretch()
+
+        # Tabelle
+        self.table = QTableWidget()
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setAlternatingRowColors(True)
+        self.table.setSortingEnabled(True)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
+        main_layout.addLayout(filter_layout)
+        main_layout.addLayout(button_layout)
+        main_layout.addWidget(self.table)
+        self.setLayout(main_layout)
+
+        self._setup_table()
+        self._connect_signals()
+
+    def _create_button(self, text: str, icon_name: str) -> QPushButton:
+        button = QPushButton(text)
+        button.setIcon(QIcon.fromTheme(icon_name))
+        button.setToolTip(f"{text} (Klicken für {text.lower()})")
+        return button
+
+    def _connect_signals(self) -> None:
+        self.add_button.clicked.connect(self._on_add_clicked)
+        self.edit_button.clicked.connect(self._on_edit_clicked)
+        self.delete_button.clicked.connect(self._on_delete_clicked)
+        self.table.selectionModel().selectionChanged.connect(
+            self._on_table_selection_changed
+        )
+        self.search_input.textChanged.connect(self._apply_filters)
+        self.department_filter.currentTextChanged.connect(self._apply_filters)
+        self.status_filter.currentTextChanged.connect(self._apply_filters)
+
+    def _setup_table(self) -> None:
+        columns = [
+            "ID",
+            "Vorname",
+            "Nachname",
+            "E-Mail",
+            "Telefon",
+            "Abteilung",
+            "Einstellungsdatum",
+            "Status",
+        ]
+        self.table.setColumnCount(len(columns))
+        self.table.setHorizontalHeaderLabels(columns)
+        self.table.setColumnHidden(0, True)
+
+    def _on_add_clicked(self) -> None:
+        dialog = EmployeeFormDialog(parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.employee_added.emit(dialog.get_employee())
+
+    def _on_edit_clicked(self) -> None:
+        emp = self.get_selected_employee()
+        if emp is not None:
+            dialog = EmployeeFormDialog(employee=emp, parent=self)
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                self.employee_edited.emit(dialog.get_employee())
+        else:
+            QMessageBox.information(
+                self,
+                "Keine Auswahl",
+                "Bitte wählen Sie einen Mitarbeiter aus der Liste aus.",
+            )
+
+    def _on_delete_clicked(self) -> None:
+        employee_id = self.get_selected_employee_id()
+        if employee_id is not None:
+            reply = QMessageBox.question(
+                self,
+                "Mitarbeiter löschen",
+                "Möchten Sie diesen Mitarbeiter wirklich löschen?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self.employee_deleted.emit(employee_id)
+        else:
+            QMessageBox.information(
+                self,
+                "Keine Auswahl",
+                "Bitte wählen Sie einen Mitarbeiter aus der Liste aus.",
+            )
+
+    def _on_table_selection_changed(self) -> None:
+        employee_id = self.get_selected_employee_id()
+        if employee_id is not None:
+            self.employee_selected.emit(employee_id)
+
+    def set_employees(self, employees: List[Employee]) -> None:
+        """Speichert die Mitarbeiterliste, aktualisiert Abteilungsfilter und füllt die Tabelle."""
+        self._all_employees = list(employees)
+
+        current_dept = self.department_filter.currentText()
+        departments = sorted(
+            {e.department.strip() for e in self._all_employees if e.department and e.department.strip()}
+        )
+        self.department_filter.blockSignals(True)
+        self.department_filter.clear()
+        self.department_filter.addItem("Alle Abteilungen")
+        self.department_filter.addItems(departments)
+        idx = self.department_filter.findText(current_dept)
+        if idx >= 0:
+            self.department_filter.setCurrentIndex(idx)
+        self.department_filter.blockSignals(False)
+
+        self._apply_filters()
+
+    def _apply_filters(self) -> None:
+        search_text = self.search_input.text().strip().lower()
+        selected_dept = self.department_filter.currentText()
+        selected_status = self.status_filter.currentText()
+
+        filtered = []
+        for emp in self._all_employees:
+            full_name = f"{emp.first_name} {emp.last_name}".lower()
+            email = (emp.email or "").lower()
+            if search_text and search_text not in full_name and search_text not in email:
+                continue
+            if selected_dept != "Alle Abteilungen" and (emp.department or "") != selected_dept:
+                continue
+            if selected_status != "Alle Status" and (emp.status or "").upper() != selected_status:
+                continue
+            filtered.append(emp)
+
+        self._render_table(filtered)
+
+    def _render_table(self, employees: List[Employee]) -> None:
+        self.table.setSortingEnabled(False)
+        self.table.setRowCount(len(employees))
+

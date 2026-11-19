@@ -1,25 +1,28 @@
 CREATE TABLE IF NOT EXISTS employees (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
+    first_name TEXT,
+    last_name TEXT,
+    email TEXT,
     phone TEXT,
-    department TEXT NOT NULL,
-    hire_date TEXT NOT NULL,
-    is_valid BOOLEAN DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    department TEXT,
+    birth_date TEXT,
+    hire_date TEXT,
+    status TEXT DEFAULT 'VALID'
 );
 
-CREATE TABLE IF NOT EXISTS validation_errors (
+CREATE TABLE IF NOT EXISTS validation_results (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    employee_id INTEGER NOT NULL,
-    error_type TEXT NOT NULL,
+    employee_id INTEGER,
+    column_name TEXT,
     error_message TEXT,
-    FOREIGN KEY (employee_id) REFERENCES employees(id)
+    severity TEXT,
+    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS import_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    file_name TEXT NOT NULL,
-    import_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    record_count INTEGER
+    filename TEXT,
+    import_date TEXT,
+    records_imported INTEGER,
+    records_rejected INTEGER
 );
