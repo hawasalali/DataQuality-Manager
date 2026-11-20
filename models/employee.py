@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import List, Optional
 
 
 @dataclass
@@ -18,6 +18,11 @@ class Employee:
     error_message: str = ""
     validation_errors: List[str] = field(default_factory=list)
 
+    @property
+    def full_name(self) -> str:
+        """Gibt den vollständigen Namen zurück."""
+        return f"{self.first_name} {self.last_name}".strip()
+
     def to_dict(self) -> dict:
         """Konvertiert die Employee-Instanz in ein Dictionary."""
         return {
@@ -31,22 +36,25 @@ class Employee:
             "hire_date": self.hire_date,
             "status": self.status,
             "error_message": self.error_message,
-            "validation_errors": self.validation_errors,
+            "validation_errors": list(self.validation_errors),
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Employee":
         """Erstellt eine Employee-Instanz aus einem Dictionary."""
+        raw_errors = data.get("validation_errors")
+        errors = [str(err) for err in raw_errors] if isinstance(raw_errors, list) else []
+
         return cls(
             id=data.get("id"),
-            first_name=data.get("first_name", ""),
-            last_name=data.get("last_name", ""),
-            email=data.get("email", ""),
-            phone=data.get("phone", ""),
-            department=data.get("department", ""),
-            birth_date=data.get("birth_date", ""),
-            hire_date=data.get("hire_date", ""),
-            status=data.get("status", "VALID"),
-            error_message=data.get("error_message", ""),
-            validation_errors=data.get("validation_errors", []),
+            first_name=str(data.get("first_name") or ""),
+            last_name=str(data.get("last_name") or ""),
+            email=str(data.get("email") or ""),
+            phone=str(data.get("phone") or ""),
+            department=str(data.get("department") or ""),
+            birth_date=str(data.get("birth_date") or ""),
+            hire_date=str(data.get("hire_date") or ""),
+            status=str(data.get("status") or "VALID"),
+            error_message=str(data.get("error_message") or ""),
+            validation_errors=errors,
         )

@@ -1,19 +1,21 @@
-from PyQt6.QtWidgets import (
-    QWidget,
-    QPushButton,
-    QVBoxLayout,
-    QHBoxLayout,
-    QTableWidget,
-    QTableWidgetItem,
-    QHeaderView,
-    QFileDialog,
-    QMessageBox,
-    QAbstractItemView,
-    QLabel,
-)
+from typing import Any, Dict, List, Optional
+
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
-from typing import List, Dict, Any, Optional
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QFileDialog,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
 from models.employee import Employee
 from services.csv_importer import CsvImporter
 
@@ -23,6 +25,8 @@ class ImportView(QWidget):
 
     import_requested = pyqtSignal(str)
     import_confirmed = pyqtSignal(str)
+
+    PREVIEW_LIMIT: int = 50
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -89,13 +93,14 @@ class ImportView(QWidget):
         self.preview_employees = []
         self.import_button.setEnabled(False)
         self.file_label.setText("Keine Datei ausgewählt")
+        self.table.clearSpans()
         self.table.setRowCount(1)
+
         item = QTableWidgetItem("Klicken Sie auf 'CSV laden', um eine Datei auszuwählen.")
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         item.setFlags(Qt.ItemFlag.ItemIsEnabled)
         self.table.setItem(0, 0, item)
-        for col in range(1, self.table.columnCount()):
-            self.table.setItem(0, col, QTableWidgetItem(""))
+        self.table.setSpan(0, 0, 1, self.table.columnCount())
 
     def _on_load_csv_clicked(self) -> None:
         file_path, _ = QFileDialog.getOpenFileName(
@@ -110,7 +115,7 @@ class ImportView(QWidget):
 
     def _load_csv_preview(self, file_path: str) -> None:
         """Lädt eine Vorschau der CSV-Datei über den CsvImporter in die Tabelle."""
-        headers, rows, error = self.importer.preview_csv(file_path, limit=50)
+        headers, rows, error = self.importer.load_rows(file_path)
         if error:
             QMessageBox.critical(
                 self,
@@ -120,7 +125,30 @@ class ImportView(QWidget):
             self._clear_table()
             return
 
-        employees = self.importer.import_employees(file_path)
+        missing = self.importer.validate_headers(headers)
+        if missing:
+            QMessageBox.critical(
+                self,
+                "Fehlende Pflichtspalten",
+                f"Die CSV-Datei konnte nicht geladen werden:\nFehlende Pflichtspalten: {', '.join(missing)}",
+            )
+            self._clear_table()
+            return
+
+        preview_rows = rows[: self.PREVIEW_LIMIT]
+        employees = [
+            Employee(
+                first_name=row.get("first_name", ""),
+                last_name=row.get("last_name", ""),
+                email=row.get("email", ""),
+                phone=row.get("phone", ""),
+                department=row.get("department", ""),
+                birth_date=row.get("birth_date", ""),
+                hire_date=row.get("hire_date", ""),
+            )
+            for row in preview_rows
+        ]
+
         self.current_file_path = file_path
         self.file_label.setText(file_path)
         self.set_preview_data(employees)
@@ -146,19 +174,20 @@ class ImportView(QWidget):
 
     def set_preview_data(self, employees: List[Employee]) -> None:
         """Setzt die Vorschau der Mitarbeiterdaten in die Tabelle."""
-        self.preview_employees = list(employees)
-        if not employees:
+        self.preview_employees = list(employees or [])
+        if not self.preview_employees:
             self._clear_table()
             return
 
-        self.table.setRowCount(len(employees))
-        for row, employee in enumerate(employees):
-            self.table.setItem(row, 0, QTableWidgetItem(employee.first_name))
-            self.table.setItem(row, 1, QTableWidgetItem(employee.last_name))
-            self.table.setItem(row, 2, QTableWidgetItem(employee.email))
-            self.table.setItem(row, 3, QTableWidgetItem(employee.phone))
-            self.table.setItem(row, 4, QTableWidgetItem(employee.department))
-            self.table.setItem(row, 5, QTableWidgetItem(employee.hire_date))
+        self.table.clearSpans()
+        self.table.setRowCount(len(self.preview_employees))
+        for row, employee in enumerate(self.preview_employees):
+            self.table.setItem(row, 0, QTableWidgetItem(employee.first_name or ""))
+            self.table.setItem(row, 1, QTableWidgetItem(employee.last_name or ""))
+            self.table.setItem(row, 2, QTableWidgetItem(employee.email or ""))
+            self.table.setItem(row, 3, QTableWidgetItem(employee.phone or ""))
+            self.table.setItem(row, 4, QTableWidgetItem(employee.department or ""))
+            self.table.setItem(row, 5, QTableWidgetItem(employee.hire_date or ""))
             self.table.setItem(row, 6, QTableWidgetItem("Vorschau"))
 
     def get_import_data(self) -> List[Dict[str, Any]]:

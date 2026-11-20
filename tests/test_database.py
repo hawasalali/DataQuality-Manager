@@ -1,32 +1,28 @@
-import os
+from pathlib import Path
 import pytest
+
 from database.connection import DatabaseConnection
 from database.employee_repository import EmployeeRepository
 from models.employee import Employee
 
 
 @pytest.fixture
-def db_path():
-    """Fixture für den Pfad zur Testdatenbank."""
-    return "data/test_employees.db"
+def db_path(tmp_path: Path) -> str:
+    """Fixture für den Pfad zu einer isolierten temporären Testdatenbank."""
+    return str(tmp_path / "test_employees.db")
 
 
 @pytest.fixture
-def employee_repository(db_path):
+def employee_repository(db_path: str):
     """Fixture für das EmployeeRepository mit einer frischen Testdatenbank."""
-    os.makedirs("data", exist_ok=True)
-    if os.path.exists(db_path):
-        os.remove(db_path)
-
     db = DatabaseConnection(db_path=db_path)
     db.create_tables("database/schema.sql")
     repo = EmployeeRepository(db)
 
-    yield repo
-
-    db.close()
-    if os.path.exists(db_path):
-        os.remove(db_path)
+    try:
+        yield repo
+    finally:
+        db.close()
 
 
 def test_add_employee(employee_repository):
@@ -44,6 +40,7 @@ def test_add_employee(employee_repository):
     emp_id = employee_repository.add(emp)
     assert emp_id is not None
     assert isinstance(emp_id, int)
+    assert emp_id > 0
 
     employees = employee_repository.get_all()
     assert len(employees) == 1
@@ -71,6 +68,11 @@ def test_get_employee_by_id(employee_repository):
     assert retrieved_emp.first_name == "Anna"
     assert retrieved_emp.last_name == "Schmidt"
     assert retrieved_emp.email == "anna@schmidt.de"
+
+
+def test_get_employee_by_id_not_found(employee_repository):
+    """Testet das Abrufen einer nicht vorhandenen Mitarbeiter-ID."""
+    assert employee_repository.get_by_id(99999) is None
 
 
 def test_update_employee(employee_repository):

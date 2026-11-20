@@ -1,24 +1,38 @@
+from typing import List, Optional
+
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QIcon
 from PyQt6.QtWidgets import (
-    QWidget,
-    QPushButton,
-    QVBoxLayout,
+    QAbstractItemView,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
     QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
-    QHeaderView,
-    QMessageBox,
-    QAbstractItemView,
-    QLineEdit,
-    QComboBox,
-    QLabel,
-    QDialog,
-    QFormLayout,
-    QDialogButtonBox,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QIcon, QColor
-from typing import Optional, List
+
 from models.employee import Employee
+
+
+class _SortableIdItem(QTableWidgetItem):
+    """Sortierbares Table-Item für numerische IDs."""
+
+    def __lt__(self, other: "QTableWidgetItem") -> bool:
+        try:
+            return int(self.data(Qt.ItemDataRole.UserRole) or 0) < int(
+                other.data(Qt.ItemDataRole.UserRole) or 0
+            )
+        except (TypeError, ValueError):
+            return super().__lt__(other)
 
 
 class EmployeeFormDialog(QDialog):
@@ -30,21 +44,21 @@ class EmployeeFormDialog(QDialog):
         super().__init__(parent)
         self.employee = employee or Employee()
         self.setWindowTitle(
-            "Mitarbeiter bearbeiten" if self.employee.id else "Neuer Mitarbeiter"
+            "Mitarbeiter bearbeiten" if self.employee.id is not None else "Neuer Mitarbeiter"
         )
         self.setMinimumWidth(380)
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
 
-        self.first_name_input = QLineEdit(self.employee.first_name)
-        self.last_name_input = QLineEdit(self.employee.last_name)
-        self.email_input = QLineEdit(self.employee.email)
-        self.phone_input = QLineEdit(self.employee.phone)
-        self.department_input = QLineEdit(self.employee.department)
-        self.birth_date_input = QLineEdit(self.employee.birth_date)
+        self.first_name_input = QLineEdit(self.employee.first_name or "")
+        self.last_name_input = QLineEdit(self.employee.last_name or "")
+        self.email_input = QLineEdit(self.employee.email or "")
+        self.phone_input = QLineEdit(self.employee.phone or "")
+        self.department_input = QLineEdit(self.employee.department or "")
+        self.birth_date_input = QLineEdit(self.employee.birth_date or "")
         self.birth_date_input.setPlaceholderText("YYYY-MM-DD")
-        self.hire_date_input = QLineEdit(self.employee.hire_date)
+        self.hire_date_input = QLineEdit(self.employee.hire_date or "")
         self.hire_date_input.setPlaceholderText("YYYY-MM-DD")
 
         form.addRow("Vorname*:", self.first_name_input)
@@ -75,7 +89,7 @@ class EmployeeFormDialog(QDialog):
             department=self.department_input.text().strip(),
             birth_date=self.birth_date_input.text().strip(),
             hire_date=self.hire_date_input.text().strip(),
-            status=self.employee.status,
+            status=self.employee.status or "VALID",
         )
 
 
@@ -90,6 +104,7 @@ class EmployeeView(QWidget):
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self._all_employees: List[Employee] = []
+        self._employees_by_id: dict[int, Employee] = {}
 
         self.setWindowTitle("Mitarbeiterverwaltung")
         self.setWindowIcon(QIcon.fromTheme("view-list-details"))
@@ -150,9 +165,10 @@ class EmployeeView(QWidget):
         self.add_button.clicked.connect(self._on_add_clicked)
         self.edit_button.clicked.connect(self._on_edit_clicked)
         self.delete_button.clicked.connect(self._on_delete_clicked)
-        self.table.selectionModel().selectionChanged.connect(
-            self._on_table_selection_changed
-        )
+        if self.table.selectionModel() is not None:
+            self.table.selectionModel().selectionChanged.connect(
+                self._on_table_selection_changed
+            )
         self.search_input.textChanged.connect(self._apply_filters)
         self.department_filter.currentTextChanged.connect(self._apply_filters)
         self.status_filter.currentTextChanged.connect(self._apply_filters)
@@ -171,6 +187,25 @@ class EmployeeView(QWidget):
         self.table.setColumnCount(len(columns))
         self.table.setHorizontalHeaderLabels(columns)
         self.table.setColumnHidden(0, True)
+
+    def get_selected_employee_id(self) -> Optional[int]:
+        """Gibt die ID des aktuell ausgewählten Mitarbeiters zurück."""
+        selected_rows = self.table.selectionModel().selectedRows() if self.table.selectionModel() else []
+        if not selected_rows:
+            return None
+        row_idx = selected_rows[0].row()
+        id_item = self.table.item(row_idx, 0)
+        if id_item is None:
+            return None
+        raw_id = id_item.data(Qt.ItemDataRole.UserRole)
+        return int(raw_id) if raw_id is not None else None
+
+    def get_selected_employee(self) -> Optional[Employee]:
+        """Gibt das aktuell ausgewählte Employee-Objekt zurück."""
+        emp_id = self.get_selected_employee_id()
+        if emp_id is None:
+            return None
+        return self._employees_by_id.get(emp_id)
 
     def _on_add_clicked(self) -> None:
         dialog = EmployeeFormDialog(parent=self)
@@ -215,11 +250,18 @@ class EmployeeView(QWidget):
 
     def set_employees(self, employees: List[Employee]) -> None:
         """Speichert die Mitarbeiterliste, aktualisiert Abteilungsfilter und füllt die Tabelle."""
-        self._all_employees = list(employees)
+        self._all_employees = list(employees or [])
+        self._employees_by_id = {
+            emp.id: emp for emp in self._all_employees if emp.id is not None
+        }
 
         current_dept = self.department_filter.currentText()
         departments = sorted(
-            {e.department.strip() for e in self._all_employees if e.department and e.department.strip()}
+            {
+                (e.department or "").strip()
+                for e in self._all_employees
+                if (e.department or "").strip()
+            }
         )
         self.department_filter.blockSignals(True)
         self.department_filter.clear()
@@ -237,9 +279,9 @@ class EmployeeView(QWidget):
         selected_dept = self.department_filter.currentText()
         selected_status = self.status_filter.currentText()
 
-        filtered = []
+        filtered: List[Employee] = []
         for emp in self._all_employees:
-            full_name = f"{emp.first_name} {emp.last_name}".lower()
+            full_name = f"{emp.first_name or ''} {emp.last_name or ''}".lower()
             email = (emp.email or "").lower()
             if search_text and search_text not in full_name and search_text not in email:
                 continue
@@ -255,3 +297,36 @@ class EmployeeView(QWidget):
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(employees))
 
+        status_colors = {
+            "VALID": QColor("#d4edda"),
+            "WARNING": QColor("#fff3cd"),
+            "INVALID": QColor("#f8d7da"),
+            "ERROR": QColor("#f8d7da"),
+        }
+
+        for row_idx, emp in enumerate(employees):
+            emp_id_val = emp.id if emp.id is not None else -(row_idx + 1)
+            id_item = _SortableIdItem(str(emp.id if emp.id is not None else ""))
+            id_item.setData(Qt.ItemDataRole.UserRole, emp_id_val)
+
+            status_text = (emp.status or "VALID").upper()
+            values = [
+                id_item,
+                QTableWidgetItem(emp.first_name or ""),
+                QTableWidgetItem(emp.last_name or ""),
+                QTableWidgetItem(emp.email or ""),
+                QTableWidgetItem(emp.phone or ""),
+                QTableWidgetItem(emp.department or ""),
+                QTableWidgetItem(emp.hire_date or ""),
+                QTableWidgetItem(status_text),
+            ]
+
+            row_bg = status_colors.get(status_text)
+            for col_idx, item in enumerate(values):
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                if row_bg is not None and col_idx == len(values) - 1:
+                    item.setBackground(row_bg)
+                    item.setForeground(QColor("#111111"))
+                self.table.setItem(row_idx, col_idx, item)
+
+        self.table.setSortingEnabled(True)

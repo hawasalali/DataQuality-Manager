@@ -1,42 +1,61 @@
-import sys
 import logging
+import sys
 from pathlib import Path
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from typing import Optional
+
 from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import QApplication, QMessageBox
+
 from ui.main_window import MainWindow
 
-# Logging einrichten
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler("dataquality_manager.log", encoding="utf-8"),
-        logging.StreamHandler(),
-    ],
-)
+PROJECT_ROOT = Path(__file__).resolve().parent
 logger = logging.getLogger(__name__)
 
 
-def setup_application() -> None:
+def configure_logging() -> None:
+    """Richtet das Logging einmalig mit Datei- und Konsolenausgabe ein."""
+    root_logger = logging.getLogger()
+    if root_logger.handlers:
+        return
+
+    log_file = PROJECT_ROOT / "dataquality_manager.log"
+    root_logger.setLevel(logging.INFO)
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler.setFormatter(formatter)
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(stream_handler)
+
+
+def setup_application() -> Path:
     """Setzt die Anwendung auf und überprüft die Verzeichnisstruktur."""
     logger.info("Starte Anwendung...")
 
-    data_dir = Path("data")
-    data_dir.mkdir(exist_ok=True)
-    logger.info(f"Datenverzeichnis: {data_dir.absolute()}")
+    data_dir = PROJECT_ROOT / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Datenverzeichnis: %s", data_dir)
 
-    reports_dir = Path("reports")
-    reports_dir.mkdir(exist_ok=True)
-    logger.info(f"Berichtsverzeichnis: {reports_dir.absolute()}")
+    reports_dir = PROJECT_ROOT / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Berichtsverzeichnis: %s", reports_dir)
 
     db_path = data_dir / "dataquality.db"
     if not db_path.exists():
-        logger.warning(f"Datenbank nicht gefunden: {db_path}. Wird neu erstellt.")
+        logger.warning("Datenbank nicht gefunden: %s. Wird neu erstellt.", db_path)
     else:
-        logger.info(f"Datenbank gefunden: {db_path}")
+        logger.info("Datenbank gefunden: %s", db_path)
+
+    return db_path
 
 
-def show_startup_message() -> None:
+def show_startup_message(parent=None) -> None:
     """Zeigt eine Willkommensmeldung beim Start an."""
     message = """
     <h2>Willkommen beim DataQuality Manager!</h2>
@@ -44,7 +63,7 @@ def show_startup_message() -> None:
     <p>Version: 1.0.0</p>
     """
     QMessageBox.information(
-        None,
+        parent,
         "DataQuality Manager - Willkommen",
         message,
         QMessageBox.StandardButton.Ok,
@@ -79,9 +98,11 @@ def handle_exception(exc_type, exc_value, exc_traceback) -> None:
     sys.exit(1)
 
 
-def main() -> None:
+def main(show_welcome: bool = False) -> None:
     """Startet die PyQt6-Anwendung mit erweiterter Fehlerbehandlung und Logging."""
-    app = None
+    configure_logging()
+    app: Optional[QApplication] = None
+
     try:
         sys.excepthook = handle_exception
 
@@ -92,17 +113,24 @@ def main() -> None:
         app.setOrganizationDomain("dataquality.local")
         app.setWindowIcon(QIcon.fromTheme("applications-development"))
 
-        setup_application()
+        db_path = setup_application()
 
-        window = MainWindow()
-        show_startup_message()
+        from database.connection import DatabaseConnection
+
+        db = DatabaseConnection(str(db_path))
+        db.create_tables(str(PROJECT_ROOT / "database" / "schema.sql"))
+
+        window = MainWindow(db=db)
         window.show()
+
+        if show_welcome:
+            show_startup_message(parent=window)
 
         logger.info("Anwendung erfolgreich gestartet.")
         sys.exit(app.exec())
 
     except Exception as e:
-        logger.error(f"Fehler beim Starten der Anwendung: {e}", exc_info=True)
+        logger.error("Fehler beim Starten der Anwendung: %s", e, exc_info=True)
         if QApplication.instance() is not None:
             QMessageBox.critical(
                 None,

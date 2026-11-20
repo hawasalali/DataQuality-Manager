@@ -1,11 +1,12 @@
 import copy
 import json
 import logging
-from pathlib import Path
-from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+
 from models.employee import Employee
-from models.validation_result import ValidationResult, Severity
+from models.validation_result import Severity, ValidationResult
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,25 @@ class ReportGenerator:
             },
         }
 
+    def _create_report_template(self) -> Dict[str, Any]:
+        """Erstellt eine tiefe Kopie der Berichtsvorlage."""
+        return copy.deepcopy(self.report_template)
+
+    @staticmethod
+    def _serialize_details(items: Optional[List[Any]]) -> List[Dict[str, Any]]:
+        """Wandelt Detail-Einträge in serialisierbare Dictionaries um."""
+        if not items:
+            return []
+        serialized: List[Dict[str, Any]] = []
+        for item in items:
+            if hasattr(item, "to_dict") and callable(item.to_dict):
+                serialized.append(item.to_dict())
+            elif isinstance(item, dict):
+                serialized.append(item)
+            else:
+                serialized.append({"message": str(item)})
+        return serialized
+
     def generate(
         self,
         total: int,
@@ -59,32 +79,26 @@ class ReportGenerator:
                 }
             )
 
-            if warning_details:
-                report["details"]["warnings"] = warning_details
-            if error_details:
-                report["details"]["errors"] = error_details
+            report["details"]["warnings"] = self._serialize_details(warning_details)
+            report["details"]["errors"] = self._serialize_details(error_details)
 
             filepath = Path(filename or self.default_filename)
             if directory is not None:
                 dir_path = Path(directory)
                 dir_path.mkdir(parents=True, exist_ok=True)
                 filepath = dir_path / filepath.name
-            else:
+            elif str(filepath.parent) not in ("", "."):
                 filepath.parent.mkdir(parents=True, exist_ok=True)
 
             with open(filepath, "w", encoding="utf-8") as file:
                 json.dump(report, file, indent=4, ensure_ascii=False)
 
-            logger.info(f"Qualitätsbericht erfolgreich generiert: {filepath}")
+            logger.info("Qualitätsbericht erfolgreich generiert: %s", filepath)
             return True
 
         except Exception as e:
-            logger.error(f"Fehler beim Generieren des Berichts: {e}")
+            logger.error("Fehler beim Generieren des Berichts: %s", e)
             return False
-
-    def _create_report_template(self) -> Dict[str, Any]:
-        """Erstellt eine tiefe Kopie der Berichtsvorlage."""
-        return copy.deepcopy(self.report_template)
 
     def generate_from_employees(
         self,
@@ -94,15 +108,31 @@ class ReportGenerator:
         directory: Optional[Union[str, Path]] = "reports",
     ) -> bool:
         """Generiert einen JSON-Bericht direkt aus Mitarbeiter- und Validierungsergebnis-Listen."""
-        total = len(employees)
-        valid = sum(1 for emp in employees if emp.status == "VALID")
-        warnings_list = [r.to_dict() for r in results if r.severity == Severity.WARNING]
-        errors_list = [r.to_dict() for r in results if r.severity == Severity.ERROR]
-        duplicates = sum(
-            1
-            for r in results
-            if r.severity == Severity.WARNING and "doppelt" in r.message.lower()
-        )
+        emp_list = employees or []
+        res_list = results or []
+
+        total = len(emp_list)
+        valid = sum(1 for emp in emp_list if getattr(emp, "status", "") == "VALID")
+
+        warnings_list: List[Dict[str, Any]] = []
+        errors_list: List[Dict[str, Any]] = []
+        duplicates = 0
+
+        for r in res_list:
+            if getattr(r, "is_valid", False):
+                continue
+            try:
+                sev = Severity.from_value(r.severity)
+            except Exception:
+                sev = None
+
+            msg_lower = str(getattr(r, "message", "") or "").lower()
+            if sev == Severity.WARNING:
+                warnings_list.append(r.to_dict() if hasattr(r, "to_dict") else {"message": str(r)})
+                if "doppelt" in msg_lower or "duplicate" in msg_lower:
+                    duplicates += 1
+            elif sev == Severity.ERROR:
+                errors_list.append(r.to_dict() if hasattr(r, "to_dict") else {"message": str(r)})
 
         return self.generate(
             total=total,
@@ -124,17 +154,18 @@ class ReportGenerator:
     ) -> bool:
         """Generiert einen Qualitätsbericht basierend auf einem Ergebnis-Dictionary."""
         try:
+            data = validation_results or {}
             return self.generate(
-                total=validation_results.get("total_records", 0),
-                valid=validation_results.get("valid_records", 0),
-                warnings=validation_results.get("warnings", 0),
-                errors=validation_results.get("errors", 0),
-                duplicate_records=validation_results.get("duplicate_records", 0),
-                warning_details=validation_results.get("warning_details", []),
-                error_details=validation_results.get("error_details", []),
+                total=int(data.get("total_records", 0)),
+                valid=int(data.get("valid_records", 0)),
+                warnings=int(data.get("warnings", 0)),
+                errors=int(data.get("errors", 0)),
+                duplicate_records=int(data.get("duplicate_records", 0)),
+                warning_details=data.get("warning_details", []),
+                error_details=data.get("error_details", []),
                 filename=filename,
                 directory=directory,
             )
         except Exception as e:
-            logger.error(f"Fehler beim Generieren des Berichts aus Validierungsergebnissen: {e}")
+            logger.error("Fehler beim Generieren des Berichts aus Validierungsergebnissen: %s", e)
             return False

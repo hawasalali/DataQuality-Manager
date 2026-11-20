@@ -1,16 +1,17 @@
 import pytest
-from services.data_validator import DataValidator
+
 from models.employee import Employee
-from models.validation_result import ValidationResult, Severity
+from models.validation_result import Severity
+from services.data_validator import DataValidator
 
 
 @pytest.fixture
-def validator():
+def validator() -> DataValidator:
     """Fixture für den DataValidator."""
     return DataValidator()
 
 
-def test_validate_email_valid(validator):
+def test_validate_email_valid(validator: DataValidator):
     """Testet die E-Mail-Validierung mit gültigen Adressen."""
     valid_emails = [
         "max@test.de",
@@ -22,7 +23,7 @@ def test_validate_email_valid(validator):
         assert validator.validate_email(email) is True, f"E-Mail {email} sollte gültig sein."
 
 
-def test_validate_email_invalid(validator):
+def test_validate_email_invalid(validator: DataValidator):
     """Testet die E-Mail-Validierung mit ungültigen Adressen."""
     invalid_emails = [
         "max@test",
@@ -37,7 +38,7 @@ def test_validate_email_invalid(validator):
         assert validator.validate_email(email) is False, f"E-Mail {email} sollte ungültig sein."
 
 
-def test_validate_phone_valid(validator):
+def test_validate_phone_valid(validator: DataValidator):
     """Testet die Telefonnummer-Validierung mit gültigen Nummern."""
     valid_phones = [
         "0123456789",
@@ -51,20 +52,20 @@ def test_validate_phone_valid(validator):
         assert validator.validate_phone(phone) is True, f"Telefonnummer {phone} sollte gültig sein."
 
 
-def test_validate_phone_invalid(validator):
+def test_validate_phone_invalid(validator: DataValidator):
     """Testet die Telefonnummer-Validierung mit ungültigen Nummern."""
     invalid_phones = [
         "abc",
         "123-",
         "+-123456789",
-        "0123 45",  # Zu kurz (nur 6 Ziffern)
+        "0123 4",  # Zu kurz (nur 5 Ziffern, mindestens 6 erforderlich)
         "++123456789",
     ]
     for phone in invalid_phones:
         assert validator.validate_phone(phone) is False, f"Telefonnummer {phone} sollte ungültig sein."
 
 
-def test_validate_date_valid(validator):
+def test_validate_date_valid(validator: DataValidator):
     """Testet die Datum-Validierung mit gültigen Daten."""
     valid_dates = [
         "2020-01-01",
@@ -76,7 +77,7 @@ def test_validate_date_valid(validator):
         assert validator._validate_date(date) is True, f"Datum {date} sollte gültig sein."
 
 
-def test_validate_date_invalid(validator):
+def test_validate_date_invalid(validator: DataValidator):
     """Testet die Datum-Validierung mit ungültigen Daten."""
     invalid_dates = [
         "2020-13-01",
@@ -92,7 +93,7 @@ def test_validate_date_invalid(validator):
         assert validator._validate_date(date) is False, f"Datum {date} sollte ungültig sein."
 
 
-def test_validate_employee_valid(validator):
+def test_validate_employee_valid(validator: DataValidator):
     """Testet die Validierung eines gültigen Mitarbeiters."""
     employee = Employee(
         id=None,
@@ -107,7 +108,7 @@ def test_validate_employee_valid(validator):
     assert results == []
 
 
-def test_validate_employee_invalid(validator):
+def test_validate_employee_invalid(validator: DataValidator):
     """Testet die Validierung eines ungültigen Mitarbeiters."""
     employee = Employee(
         id=None,
@@ -129,8 +130,8 @@ def test_validate_employee_invalid(validator):
     assert "hire_date" in fields_with_errors
 
 
-def test_validate_project_sample_csv(validator):
-    """Testet exakt die 5 Beispiel-Datensätze aus Abschnitt 8 des Projektplans."""
+def test_validate_project_sample_csv(validator: DataValidator):
+    """Testet die 5 Beispiel-Datensätze aus dem Projektplan."""
     employees = [
         Employee(first_name="Max", last_name="Mustermann", email="max@test.de", phone="0171234567", department="IT"),
         Employee(first_name="Anna", last_name="Schmidt", email="anna@test.de", phone="0171234568", department="HR"),
@@ -146,3 +147,6 @@ def test_validate_project_sample_csv(validator):
     assert len(errors) == 2  # Peter (Nachname fehlt) + Lisa (ungültige E-Mail)
     assert len(warnings) == 1  # Zweiter Max (Duplikat)
     assert sum(1 for e in employees if e.status == "VALID") == 2
+    assert employees[2].status == "INVALID"
+    assert employees[3].status == "WARNING"
+    assert employees[4].status == "INVALID"

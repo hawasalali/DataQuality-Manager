@@ -1,7 +1,8 @@
 import csv
 import logging
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union
+
 from models.employee import Employee
 from models.validation_result import ValidationResult
 
@@ -11,8 +12,9 @@ logger = logging.getLogger(__name__)
 class CsvExporter:
     """Ein Exporter für Mitarbeiterdaten und Validierungsfehler in CSV-Dateien."""
 
-    def __init__(self, default_filename: str = "employees_export.csv"):
+    def __init__(self, default_filename: str = "employees_export.csv", delimiter: str = ","):
         self.default_filename = default_filename
+        self.delimiter = delimiter
 
     def export(
         self,
@@ -36,28 +38,30 @@ class CsvExporter:
             ]
 
             with open(filepath, mode="w", newline="", encoding="utf-8") as csv_file:
-                writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+                writer = csv.DictWriter(
+                    csv_file, fieldnames=fieldnames, delimiter=self.delimiter
+                )
                 writer.writeheader()
-                for employee in employees:
+                for employee in employees or []:
                     writer.writerow(
                         {
                             "id": employee.id if employee.id is not None else "",
-                            "first_name": employee.first_name,
-                            "last_name": employee.last_name,
-                            "email": employee.email,
-                            "phone": employee.phone,
-                            "department": employee.department,
-                            "birth_date": employee.birth_date,
-                            "hire_date": employee.hire_date,
-                            "status": employee.status,
+                            "first_name": employee.first_name or "",
+                            "last_name": employee.last_name or "",
+                            "email": employee.email or "",
+                            "phone": employee.phone or "",
+                            "department": employee.department or "",
+                            "birth_date": employee.birth_date or "",
+                            "hire_date": employee.hire_date or "",
+                            "status": employee.status or "",
                         }
                     )
 
-            logger.info(f"Mitarbeiter erfolgreich exportiert: {filepath}")
+            logger.info("Mitarbeiter erfolgreich exportiert: %s", filepath)
             return True
 
         except Exception as e:
-            logger.error(f"Fehler beim Exportieren der Mitarbeiter: {e}")
+            logger.error("Fehler beim Exportieren der Mitarbeiter: %s", e)
             return False
 
     def export_validation_errors(
@@ -66,40 +70,45 @@ class CsvExporter:
         filename: Union[str, Path] = "validation_errors.csv",
         directory: Union[str, Path, None] = None,
     ) -> bool:
-        """Exportiert Validierungsfehler in eine CSV-Datei."""
+        """Exportiert Validierungsfehler und -warnungen in eine CSV-Datei."""
         try:
             filepath = self._resolve_path(filename, directory)
             fieldnames = ["employee_id", "field", "severity", "message", "actual_value"]
 
             with open(filepath, mode="w", newline="", encoding="utf-8") as csv_file:
-                writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+                writer = csv.DictWriter(
+                    csv_file, fieldnames=fieldnames, delimiter=self.delimiter
+                )
                 writer.writeheader()
-                for res in results:
+                for res in results or []:
+                    if getattr(res, "is_valid", False):
+                        continue
+                    severity_val = getattr(res.severity, "value", str(res.severity))
                     writer.writerow(
                         {
                             "employee_id": res.employee_id if res.employee_id is not None else "",
-                            "field": res.field,
-                            "severity": str(res.severity),
-                            "message": res.message,
-                            "actual_value": res.actual_value or "",
+                            "field": res.field or "",
+                            "severity": severity_val,
+                            "message": res.message or "",
+                            "actual_value": res.actual_value if res.actual_value is not None else "",
                         }
                     )
 
-            logger.info(f"Validierungsfehler erfolgreich exportiert: {filepath}")
+            logger.info("Validierungsfehler erfolgreich exportiert: %s", filepath)
             return True
 
         except Exception as e:
-            logger.error(f"Fehler beim Exportieren der Validierungsfehler: {e}")
+            logger.error("Fehler beim Exportieren der Validierungsfehler: %s", e)
             return False
 
     def _resolve_path(
-        self, filename: Union[str, Path], directory: Union[str, Path, None]
+        self, filename: Union[str, Path], directory: Optional[Union[str, Path]]
     ) -> Path:
         path = Path(filename)
         if directory is not None:
             dir_path = Path(directory)
             dir_path.mkdir(parents=True, exist_ok=True)
             path = dir_path / path.name
-        else:
+        elif str(path.parent) not in ("", "."):
             path.parent.mkdir(parents=True, exist_ok=True)
         return path

@@ -3,13 +3,26 @@ from enum import Enum
 from typing import Optional
 
 
-class Severity(Enum):
+class Severity(str, Enum):
     """Schweregrade für Validierungsfehler laut Projektplan."""
+
     ERROR = "ERROR"
     WARNING = "WARNING"
 
     def __str__(self) -> str:
         return self.value
+
+    @classmethod
+    def from_value(cls, value: object) -> "Severity":
+        """Wandelt einen Wert sicher in Severity um oder wirft ValueError."""
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().upper()
+            for item in cls:
+                if item.value == normalized or item.name == normalized:
+                    return item
+        raise ValueError(f"Ungültiger Schweregrad (Severity): {value!r}")
 
 
 @dataclass
@@ -24,11 +37,23 @@ class ValidationResult:
     expected_format: Optional[str] = None
     actual_value: Optional[str] = None
 
-    def __post_init__(self):
-        if isinstance(self.severity, str):
-            self.severity = Severity[self.severity.upper()]
+    def __post_init__(self) -> None:
+        self.severity = Severity.from_value(self.severity)
+        self.field = str(self.field or "")
+        self.message = str(self.message or "").strip()
+
         if not self.is_valid and not self.message:
             raise ValueError("Fehlermeldung muss angegeben werden, wenn is_valid=False.")
+
+    @property
+    def is_error(self) -> bool:
+        """Gibt True zurück, wenn es sich um einen ERROR handelt."""
+        return self.severity == Severity.ERROR
+
+    @property
+    def is_warning(self) -> bool:
+        """Gibt True zurück, wenn es sich um eine WARNING handelt."""
+        return self.severity == Severity.WARNING
 
     def to_dict(self) -> dict:
         """Konvertiert das ValidationResult-Objekt in ein Dictionary."""
@@ -36,7 +61,7 @@ class ValidationResult:
             "employee_id": self.employee_id,
             "field": self.field,
             "message": self.message,
-            "severity": str(self.severity),
+            "severity": self.severity.value,
             "is_valid": self.is_valid,
             "expected_format": self.expected_format,
             "actual_value": self.actual_value,
@@ -45,18 +70,12 @@ class ValidationResult:
     @classmethod
     def from_dict(cls, data: dict) -> "ValidationResult":
         """Erstellt ein ValidationResult-Objekt aus einem Dictionary."""
-        raw_severity = data.get("severity", "ERROR")
-        severity = (
-            raw_severity
-            if isinstance(raw_severity, Severity)
-            else Severity[str(raw_severity).upper()]
-        )
         return cls(
             employee_id=data.get("employee_id"),
-            field=data.get("field", ""),
-            message=data.get("message", ""),
-            severity=severity,
-            is_valid=data.get("is_valid", False),
+            field=str(data.get("field") or ""),
+            message=str(data.get("message") or ""),
+            severity=Severity.from_value(data.get("severity", Severity.ERROR)),
+            is_valid=bool(data.get("is_valid", False)),
             expected_format=data.get("expected_format"),
             actual_value=data.get("actual_value"),
         )

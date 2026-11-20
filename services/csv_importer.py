@@ -1,7 +1,8 @@
 import csv
 import logging
 from pathlib import Path
-from typing import List, Optional, Union, Dict, Tuple
+from typing import Dict, List, Optional, Tuple, Union
+
 from models.employee import Employee
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,22 @@ class CsvImporter:
     def __init__(self, default_encoding: str = "utf-8"):
         self.default_encoding = default_encoding
 
+    def _encodings_to_try(self) -> List[str]:
+        """Liefert die Kodierungsliste mit default_encoding zuerst (ohne Duplikate)."""
+        ordered = [self.default_encoding] + list(self.SUPPORTED_ENCODINGS)
+        seen = set()
+        result: List[str] = []
+        for enc in ordered:
+            if enc and enc not in seen:
+                seen.add(enc)
+                result.append(enc)
+        return result
+
+    @staticmethod
+    def _is_empty_row(row: Dict[str, str]) -> bool:
+        """Prüft, ob eine Zeile komplett leer ist."""
+        return all(not (val or "").strip() for val in row.values())
+
     def load_rows(
         self, filepath: Union[str, Path]
     ) -> Tuple[Optional[List[str]], List[Dict[str, str]], Optional[str]]:
@@ -43,26 +60,54 @@ class CsvImporter:
             logger.error(msg)
             return None, [], msg
 
-        for encoding in self.SUPPORTED_ENCODINGS:
+        if path.is_dir():
+            msg = f"Der angegebene Pfad ist ein Verzeichnis, keine CSV-Datei: {path}"
+            logger.error(msg)
+            return None, [], msg
+
+        for encoding in self._encodings_to_try():
             try:
                 with open(path, mode="r", encoding=encoding, newline="") as f:
                     sample = f.read(2048)
                     f.seek(0)
                     delimiter = ";" if sample.count(";") > sample.count(",") else ","
                     reader = csv.DictReader(f, delimiter=delimiter)
+
                     if not reader.fieldnames:
                         return None, [], "Die CSV-Datei ist leer oder hat keine Kopfzeile."
 
-                    headers = [h.strip() for h in reader.fieldnames if h is not None]
+                    headers = [
+                        h.strip()
+                        for h in reader.fieldnames
+                        if h is not None and h.strip()
+                    ]
+                    if not headers:
+                        return None, [], "Die Kopfzeile der CSV-Datei ist leer."
+
                     rows: List[Dict[str, str]] = []
                     for row in reader:
-                        cleaned_row = {
-                            (k.strip() if k else ""): (v.strip() if v is not None else "")
-                            for k, v in row.items()
-                        }
-                        rows.append(cleaned_row)
+                        cleaned_row: Dict[str, str] = {}
+                        for k, v in row.items():
+                            if k is None:
+                                continue
+                            key = k.strip()
+                            if not key:
+                                continue
+                            if isinstance(v, list):
+                                val = ", ".join(str(item).strip() for item in v if item is not None)
+                            else:
+                                val = v.strip() if v is not None else ""
+                            cleaned_row[key] = val
 
-                logger.info(f"Datei erfolgreich mit Kodierung '{encoding}' geladen: {path}")
+                        if not self._is_empty_row(cleaned_row):
+                            rows.append(cleaned_row)
+
+                logger.info(
+                    "Datei erfolgreich mit Kodierung '%s' geladen: %s (%d Zeilen)",
+                    encoding,
+                    path,
+                    len(rows),
+                )
                 return headers, rows, None
             except UnicodeDecodeError:
                 continue
@@ -78,8 +123,9 @@ class CsvImporter:
     def validate_headers(self, headers: Optional[List[str]]) -> List[str]:
         """Prüft, ob alle Pflichtspalten vorhanden sind. Gibt fehlende Spalten zurück."""
         if not headers:
-            return self.REQUIRED_COLUMNS.copy()
-        return [col for col in self.REQUIRED_COLUMNS if col not in headers]
+            return list(self.REQUIRED_COLUMNS)
+        normalized_headers = {h.strip() for h in headers if h}
+        return [col for col in self.REQUIRED_COLUMNS if col not in normalized_headers]
 
     def preview_csv(
         self, filepath: Union[str, Path], limit: int = 10
@@ -91,7 +137,8 @@ class CsvImporter:
         missing = self.validate_headers(headers)
         if missing:
             return headers or [], [], f"Fehlende Pflichtspalten: {', '.join(missing)}"
-        return headers or [], rows[:limit], None
+        safe_limit = max(0, limit)
+        return headers or [], rows[:safe_limit], None
 
     def import_employees(self, filepath: Union[str, Path]) -> List[Employee]:
         """Importiert Mitarbeiterdaten aus einer CSV-Datei als Liste von Employee-Objekten."""
@@ -102,7 +149,7 @@ class CsvImporter:
 
         missing_columns = self.validate_headers(headers)
         if missing_columns:
-            logger.error(f"Fehlende Spalten in der CSV-Datei: {missing_columns}")
+            logger.error("Fehlende Spalten in der CSV-Datei: %s", missing_columns)
             return []
 
         employees: List[Employee] = []
@@ -118,5 +165,5 @@ class CsvImporter:
             )
             employees.append(employee)
 
-        logger.info(f"Erfolgreich {len(employees)} Mitarbeiter aus {filepath} eingelesen.")
+        logger.info("Erfolgreich %d Mitarbeiter aus %s eingelesen.", len(employees), filepath)
         return employees

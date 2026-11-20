@@ -1,40 +1,43 @@
 import re
 from datetime import datetime
-from typing import List, Dict, Set
+from typing import Dict, List, Set
+
 from models.employee import Employee
-from models.validation_result import ValidationResult, Severity
+from models.validation_result import Severity, ValidationResult
 
 
 class DataValidator:
     """Ein Validator für Mitarbeiterdaten (Pflichtfelder, Formate und Duplikate)."""
 
     EMAIL_PATTERN: str = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+    PHONE_PATTERN: str = r"^\+?[0-9]+(?:[\s\-/()][0-9]+)*$"
+    DATE_PATTERN: str = r"^\d{4}-\d{2}-\d{2}$"
 
     def validate_email(self, email: str) -> bool:
         """Validiert eine E-Mail-Adresse anhand eines regulären Ausdrucks."""
         if not email:
             return False
         cleaned = str(email).strip()
-        if ".." in cleaned:
+        if not cleaned or ".." in cleaned:
             return False
         return bool(re.match(self.EMAIL_PATTERN, cleaned))
 
     def validate_phone(self, phone: str) -> bool:
-        """Validiert eine Telefonnummer (erlaubt Ziffern, +, Leerzeichen, -, /)."""
-        if not phone:
+        """Validiert eine Telefonnummer (erlaubt Ziffern, +, Leerzeichen, -, /, Klammern)."""
+        if not phone or not str(phone).strip():
             return True  # Optionales Feld, wird nur geprüft wenn befüllt
         cleaned = str(phone).strip()
-        if not re.match(r"^\+?[0-9]+(?:[\s\-/()][0-9]+)*$", cleaned):
+        if not re.match(self.PHONE_PATTERN, cleaned):
             return False
         digits = [c for c in cleaned if c.isdigit()]
         return len(digits) >= 6
 
     def _validate_date(self, date_str: str) -> bool:
         """Validiert ein Datum im strikten Format YYYY-MM-DD."""
-        if not date_str:
+        if not date_str or not str(date_str).strip():
             return False
-        cleaned = date_str.strip()
-        if not re.match(r"^\d{4}-\d{2}-\d{2}$", cleaned):
+        cleaned = str(date_str).strip()
+        if not re.match(self.DATE_PATTERN, cleaned):
             return False
         try:
             datetime.strptime(cleaned, "%Y-%m-%d")
@@ -46,8 +49,15 @@ class DataValidator:
         """Validiert ein einzelnes Employee-Objekt und sammelt alle Validierungsfehler."""
         errors: List[ValidationResult] = []
 
+        first_name = str(employee.first_name or "")
+        last_name = str(employee.last_name or "")
+        email = str(employee.email or "")
+        phone = str(employee.phone or "")
+        birth_date = str(employee.birth_date or "")
+        hire_date = str(employee.hire_date or "")
+
         # Vorname (Pflichtfeld)
-        if not employee.first_name or not employee.first_name.strip():
+        if not first_name.strip():
             errors.append(
                 ValidationResult(
                     employee_id=employee.id,
@@ -60,7 +70,7 @@ class DataValidator:
             )
 
         # Nachname (Pflichtfeld)
-        if not employee.last_name or not employee.last_name.strip():
+        if not last_name.strip():
             errors.append(
                 ValidationResult(
                     employee_id=employee.id,
@@ -73,7 +83,19 @@ class DataValidator:
             )
 
         # E-Mail (Pflichtfeld + Format)
-        if not employee.email or not self.validate_email(employee.email):
+        if not email.strip():
+            errors.append(
+                ValidationResult(
+                    employee_id=employee.id,
+                    field="email",
+                    message="Die E-Mail-Adresse darf nicht leer sein.",
+                    severity=Severity.ERROR,
+                    is_valid=False,
+                    expected_format="benutzer@domain.de",
+                    actual_value=employee.email,
+                )
+            )
+        elif not self.validate_email(email):
             errors.append(
                 ValidationResult(
                     employee_id=employee.id,
@@ -86,8 +108,8 @@ class DataValidator:
                 )
             )
 
-        # Telefonnummer (Format)
-        if employee.phone and not self.validate_phone(employee.phone):
+        # Telefonnummer (optional, Format prüfen wenn vorhanden)
+        if phone.strip() and not self.validate_phone(phone):
             errors.append(
                 ValidationResult(
                     employee_id=employee.id,
@@ -100,8 +122,8 @@ class DataValidator:
                 )
             )
 
-        # Geburtsdatum (Format)
-        if employee.birth_date and not self._validate_date(employee.birth_date):
+        # Geburtsdatum (optional, Format prüfen wenn vorhanden)
+        if birth_date.strip() and not self._validate_date(birth_date):
             errors.append(
                 ValidationResult(
                     employee_id=employee.id,
@@ -114,8 +136,8 @@ class DataValidator:
                 )
             )
 
-        # Einstellungsdatum (Format)
-        if employee.hire_date and not self._validate_date(employee.hire_date):
+        # Einstellungsdatum (optional, Format prüfen wenn vorhanden)
+        if hire_date.strip() and not self._validate_date(hire_date):
             errors.append(
                 ValidationResult(
                     employee_id=employee.id,
@@ -138,9 +160,9 @@ class DataValidator:
         all_results: List[ValidationResult] = []
         seen_emails: Set[str] = set()
 
-        for employee in employees:
+        for employee in employees or []:
             emp_results = self.validate_employee(employee)
-            email_key = employee.email.strip().lower() if employee.email else ""
+            email_key = str(employee.email or "").strip().lower()
 
             if email_key and self.validate_email(email_key):
                 if email_key in seen_emails:
@@ -175,8 +197,8 @@ class DataValidator:
     def find_duplicates(self, employees: List[Employee]) -> Dict[str, List[Employee]]:
         """Findet Duplikate in einer Liste von Mitarbeitern basierend auf der E-Mail-Adresse."""
         email_to_employees: Dict[str, List[Employee]] = {}
-        for employee in employees:
-            email = employee.email.strip().lower() if employee.email else ""
+        for employee in employees or []:
+            email = str(employee.email or "").strip().lower()
             if email:
                 email_to_employees.setdefault(email, []).append(employee)
 

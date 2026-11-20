@@ -1,21 +1,17 @@
----
+from typing import Dict, List, Optional
 
-### 2. `ui/validation_view.py` (Komplett)
-Auch hier einfach alles in `ui/validation_view.py` markieren (`Strg + A`), ersetzen und speichern (`Strg + S`):
-
-```python
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QBrush, QColor, QIcon
 from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QTableWidget,
-    QTableWidgetItem,
+    QAbstractItemView,
     QHeaderView,
     QMessageBox,
-    QAbstractItemView,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QIcon, QBrush, QColor
-from typing import List, Optional, Dict
+
 from models.employee import Employee
 from models.validation_result import ValidationResult
 
@@ -49,9 +45,9 @@ class ValidationView(QWidget):
         self._clear_table()
 
     def _connect_signals(self) -> None:
-        self.table.selectionModel().selectionChanged.connect(
-            self._on_validation_selected
-        )
+        selection_model = self.table.selectionModel()
+        if selection_model is not None:
+            selection_model.selectionChanged.connect(self._on_validation_selected)
 
     def _setup_table(self) -> None:
         columns = [
@@ -66,6 +62,11 @@ class ValidationView(QWidget):
         self.table.setColumnCount(len(columns))
         self.table.setHorizontalHeaderLabels(columns)
         self.table.setColumnHidden(0, True)
+
+    def _make_readonly_item(self, text: str) -> QTableWidgetItem:
+        item = QTableWidgetItem(text)
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        return item
 
     def _on_validation_selected(self) -> None:
         selected_id = self.get_selected_validation_id()
@@ -86,58 +87,66 @@ class ValidationView(QWidget):
         if employees:
             for emp in employees:
                 if emp.id is not None:
-                    full_name = f"{emp.first_name} {emp.last_name}".strip()
-                    emp_lookup[emp.id] = full_name or emp.email or f"ID #{emp.id}"
+                    full_name = f"{emp.first_name or ''} {emp.last_name or ''}".strip()
+                    emp_lookup[emp.id] = full_name or (emp.email or "") or f"ID #{emp.id}"
 
+        self.table.clearSpans()
         self.table.setRowCount(len(validation_results))
 
         for row, result in enumerate(validation_results):
             emp_id_str = str(result.employee_id) if result.employee_id is not None else ""
-            self.table.setItem(row, 0, QTableWidgetItem(emp_id_str))
+            self.table.setItem(row, 0, self._make_readonly_item(emp_id_str))
 
             record_name = (
                 emp_lookup.get(result.employee_id, f"Datensatz #{result.employee_id}")
                 if result.employee_id is not None
                 else "Unbekannter Datensatz"
             )
-            self.table.setItem(row, 1, QTableWidgetItem(record_name))
-            self.table.setItem(row, 2, QTableWidgetItem(result.field))
+            self.table.setItem(row, 1, self._make_readonly_item(record_name))
+            self.table.setItem(row, 2, self._make_readonly_item(result.field or ""))
 
-            msg_item = QTableWidgetItem(result.message)
-            msg_item.setToolTip(result.message)
+            msg_text = result.message or ""
+            msg_item = self._make_readonly_item(msg_text)
+            msg_item.setToolTip(msg_text)
             self.table.setItem(row, 3, msg_item)
 
-            sev_name = str(result.severity).upper()
-            severity_item = QTableWidgetItem(sev_name)
+            raw_severity = getattr(result.severity, "value", result.severity)
+            sev_name = str(raw_severity or "").upper()
+            severity_item = self._make_readonly_item(sev_name)
             if sev_name == "ERROR":
                 severity_item.setBackground(QBrush(QColor("#f8d7da")))
+                severity_item.setForeground(QBrush(QColor("#111111")))
             elif sev_name == "WARNING":
                 severity_item.setBackground(QBrush(QColor("#fff3cd")))
+                severity_item.setForeground(QBrush(QColor("#111111")))
             else:
                 severity_item.setBackground(QBrush(QColor("#d4edda")))
+                severity_item.setForeground(QBrush(QColor("#111111")))
             self.table.setItem(row, 4, severity_item)
 
-            self.table.setItem(row, 5, QTableWidgetItem(result.expected_format or ""))
+            self.table.setItem(row, 5, self._make_readonly_item(result.expected_format or ""))
 
-            actual_value_item = QTableWidgetItem(result.actual_value or "")
-            actual_value_item.setToolTip(result.actual_value or "")
+            actual_text = result.actual_value if result.actual_value is not None else ""
+            actual_value_item = self._make_readonly_item(actual_text)
+            actual_value_item.setToolTip(actual_text)
             self.table.setItem(row, 6, actual_value_item)
 
     def _clear_table(self) -> None:
+        self.table.clearSpans()
         self.table.setRowCount(1)
         item = QTableWidgetItem("Keine Validierungsergebnisse verfügbar.")
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        self.table.setItem(0, 1, item)
-        for col in range(self.table.columnCount()):
-            if col != 1:
-                self.table.setItem(0, col, QTableWidgetItem(""))
+        self.table.setItem(0, 0, item)
+        self.table.setSpan(0, 0, 1, self.table.columnCount())
 
     def get_selected_validation_id(self) -> Optional[int]:
         selected_row = self.table.currentRow()
-        if selected_row >= 0 and self.table.item(selected_row, 0):
-            text = self.table.item(selected_row, 0).text()
-            return int(text) if text.isdigit() else None
+        if selected_row >= 0:
+            item = self.table.item(selected_row, 0)
+            if item is not None:
+                text = item.text().strip()
+                return int(text) if text.isdigit() else None
         return None
 
     def clear_selection(self) -> None:

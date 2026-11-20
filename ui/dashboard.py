@@ -1,13 +1,14 @@
-from PyQt6.QtWidgets import (
-    QWidget,
-    QLabel,
-    QHBoxLayout,
-    QVBoxLayout,
-    QFrame,
-    QSizePolicy,
-)
+from typing import Dict, Optional
+
 from PyQt6.QtCore import Qt
-from typing import Optional, Dict
+from PyQt6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class Dashboard(QWidget):
@@ -35,7 +36,7 @@ class Dashboard(QWidget):
         self.valid_label = self._create_label("Valid: 0")
         self.warning_label = self._create_label("Warnings: 0")
         self.error_label = self._create_label("Errors: 0")
-        self.duplicate_label = (
+        self.duplicate_label: Optional[QLabel] = (
             self._create_label("Duplicates: 0") if show_duplicates else None
         )
 
@@ -44,7 +45,7 @@ class Dashboard(QWidget):
         stats_layout.addWidget(self.warning_label)
         stats_layout.addWidget(self.error_label)
 
-        if self.duplicate_label:
+        if self.duplicate_label is not None:
             stats_layout.addWidget(self.duplicate_label)
 
         stats_frame = QFrame()
@@ -67,7 +68,8 @@ class Dashboard(QWidget):
             """
             QLabel {
                 background-color: #f0f0f0;
-                border: 1px solid #ccc;
+                color: #111111;
+                border: 1px solid #cccccc;
                 border-radius: 4px;
                 padding: 8px;
                 font-weight: bold;
@@ -85,19 +87,36 @@ class Dashboard(QWidget):
         duplicates: int = 0,
     ) -> None:
         """Aktualisiert die Statistiken im Dashboard."""
-        self.stats["total"] = total
-        self.stats["valid"] = valid
-        self.stats["warnings"] = warnings
-        self.stats["errors"] = errors
-        self.stats["duplicates"] = duplicates
+        total_val = int(total or 0)
+        valid_val = int(valid or 0)
+        warnings_val = int(warnings or 0)
+        errors_val = int(errors or 0)
+        duplicates_val = int(duplicates or 0)
 
-        self.total_label.setText(f"DB Total: {total}")
-        self.valid_label.setText(f"Valid: {valid}")
-        self.warning_label.setText(f"Warnings: {warnings}")
-        self.error_label.setText(f"Errors: {errors}")
+        self.stats["total"] = total_val
+        self.stats["valid"] = valid_val
+        self.stats["warnings"] = warnings_val
+        self.stats["errors"] = errors_val
+        self.stats["duplicates"] = duplicates_val
 
-        if self.duplicate_label:
-            self.duplicate_label.setText(f"Duplicates: {duplicates}")
+        self.total_label.setText(f"DB Total: {total_val}")
+        self.valid_label.setText(f"Valid: {valid_val}")
+        self.warning_label.setText(f"Warnings: {warnings_val}")
+        self.error_label.setText(f"Errors: {errors_val}")
+
+        if self.duplicate_label is not None:
+            self.duplicate_label.setText(f"Duplicates: {duplicates_val}")
+
+    def update_from_dict(self, stats_dict: Optional[Dict[str, int]]) -> None:
+        """Aktualisiert das Dashboard anhand eines Statistik-Dictionaries."""
+        data = stats_dict or {}
+        self.update_stats(
+            total=data.get("total", 0),
+            valid=data.get("valid", 0),
+            warnings=data.get("warnings", 0),
+            errors=data.get("errors", 0),
+            duplicates=data.get("duplicates", 0),
+        )
 
     def get_stats(self) -> Dict[str, int]:
         """Gibt die aktuellen Statistiken zurück."""

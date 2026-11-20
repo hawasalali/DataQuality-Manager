@@ -4,38 +4,40 @@ from models.validation_result import ValidationResult
 
 
 class EmployeeRepository:
+    """Repository für CRUD-Operationen auf employees, validation_results und import_history."""
+
     def __init__(self, database):
         self.db = database
 
+    @staticmethod
+    def _get_col(row, key: str, index: int, default=None):
+        """Liest einen Wert sicher aus einem sqlite3.Row-/Mapping- oder Tuple-Objekt."""
+        if isinstance(row, dict) or hasattr(row, "keys"):
+            keys = row.keys()
+            if key in keys:
+                return row[key]
+            return default
+        if index < len(row):
+            return row[index]
+        return default
+
     def _row_to_employee(self, row) -> Employee:
         """Wandelt eine Datenbankzeile (Tuple oder sqlite3.Row) in ein Employee-Objekt um."""
-        if isinstance(row, dict) or hasattr(row, "keys"):
-            return Employee(
-                id=row["id"],
-                first_name=row["first_name"] or "",
-                last_name=row["last_name"] or "",
-                email=row["email"] or "",
-                phone=row["phone"] or "",
-                department=row["department"] or "",
-                birth_date=row["birth_date"] or "",
-                hire_date=row["hire_date"] or "",
-                status=row["status"] or "VALID",
-            )
         return Employee(
-            id=row[0],
-            first_name=row[1] or "",
-            last_name=row[2] or "",
-            email=row[3] or "",
-            phone=row[4] or "",
-            department=row[5] or "",
-            birth_date=row[6] or "",
-            hire_date=row[7] or "",
-            status=row[8] or "VALID",
+            id=self._get_col(row, "id", 0),
+            first_name=self._get_col(row, "first_name", 1, "") or "",
+            last_name=self._get_col(row, "last_name", 2, "") or "",
+            email=self._get_col(row, "email", 3, "") or "",
+            phone=self._get_col(row, "phone", 4, "") or "",
+            department=self._get_col(row, "department", 5, "") or "",
+            birth_date=self._get_col(row, "birth_date", 6, "") or "",
+            hire_date=self._get_col(row, "hire_date", 7, "") or "",
+            status=self._get_col(row, "status", 8, "VALID") or "VALID",
         )
 
     def add(self, employee: Employee) -> int:
-        cursor = self.db.conn.cursor()
-        cursor.execute(
+        """Fügt einen neuen Mitarbeiter ein und gibt die neue ID zurück."""
+        new_id = self.db.execute_query(
             """
             INSERT INTO employees (
                 first_name,
@@ -59,38 +61,42 @@ class EmployeeRepository:
                 employee.hire_date,
                 employee.status,
             ),
+            return_lastrowid=True,
         )
-        self.db.conn.commit()
-        employee.id = cursor.lastrowid
-        return employee.id
+        employee.id = new_id
+        return new_id if new_id is not None else 0
 
     def get_all(self) -> List[Employee]:
-        cursor = self.db.conn.cursor()
-        cursor.execute(
+        """Gibt alle gespeicherten Mitarbeiter zurück."""
+        rows = self.db.execute_query(
             """
             SELECT id, first_name, last_name, email, phone, department, birth_date, hire_date, status
             FROM employees
-            """
-        )
-        rows = cursor.fetchall()
+            ORDER BY id ASC
+            """,
+            fetch=True,
+        ) or []
         return [self._row_to_employee(row) for row in rows]
 
     def get_by_id(self, employee_id: int) -> Optional[Employee]:
-        cursor = self.db.conn.cursor()
-        cursor.execute(
+        """Sucht einen Mitarbeiter anhand seiner ID."""
+        rows = self.db.execute_query(
             """
             SELECT id, first_name, last_name, email, phone, department, birth_date, hire_date, status
             FROM employees
             WHERE id = ?
             """,
             (employee_id,),
-        )
-        row = cursor.fetchone()
-        return self._row_to_employee(row) if row else None
+            fetch=True,
+        ) or []
+        return self._row_to_employee(rows[0]) if rows else None
 
     def update(self, employee: Employee) -> None:
-        cursor = self.db.conn.cursor()
-        cursor.execute(
+        """Aktualisiert einen bestehenden Mitarbeiter anhand seiner ID."""
+        if employee.id is None:
+            raise ValueError("Mitarbeiter ohne ID kann nicht aktualisiert werden.")
+
+        self.db.execute_query(
             """
             UPDATE employees
             SET
@@ -116,64 +122,83 @@ class EmployeeRepository:
                 employee.id,
             ),
         )
-        self.db.conn.commit()
 
     def delete(self, employee_id: int) -> None:
-        cursor = self.db.conn.cursor()
-        cursor.execute(
+        """Löscht einen Mitarbeiter anhand seiner ID."""
+        self.db.execute_query(
             """
             DELETE FROM employees
             WHERE id = ?
             """,
             (employee_id,),
         )
-        self.db.conn.commit()
 
     def add_validation_result(self, result: ValidationResult) -> None:
-        cursor = self.db.conn.cursor()
-        cursor.execute(
+        """Speichert ein Validierungsergebnis in der Datenbank."""
+        severity_value = getattr(result.severity, "value", result.severity)
+        self.db.execute_query(
             """
             INSERT INTO validation_results (employee_id, column_name, error_message, severity)
             VALUES (?, ?, ?, ?)
             """,
-            (result.employee_id, result.field, result.message, str(result.severity)),
+            (result.employee_id, result.field, result.message, str(severity_value)),
         )
-        self.db.conn.commit()
 
     def get_all_validation_results(self) -> List[ValidationResult]:
-        cursor = self.db.conn.cursor()
-        cursor.execute(
+        """Lädt alle gespeicherten Validierungsergebnisse."""
+        rows = self.db.execute_query(
             """
             SELECT employee_id, column_name, error_message, severity
             FROM validation_results
-            """
-        )
-        rows = cursor.fetchall()
-        results = []
+            ORDER BY id ASC
+            """,
+            fetch=True,
+        ) or []
+        results: List[ValidationResult] = []
         for row in rows:
-            emp_id = row["employee_id"] if hasattr(row, "keys") else row[0]
-            col = row["column_name"] if hasattr(row, "keys") else row[1]
-            msg = row["error_message"] if hasattr(row, "keys") else row[2]
-            sev = row["severity"] if hasattr(row, "keys") else row[3]
             results.append(
                 ValidationResult(
-                    employee_id=emp_id,
-                    field=col or "",
-                    message=msg or "",
-                    severity=sev or "ERROR",
+                    employee_id=self._get_col(row, "employee_id", 0),
+                    field=self._get_col(row, "column_name", 1, "") or "",
+                    message=self._get_col(row, "error_message", 2, "") or "",
+                    severity=self._get_col(row, "severity", 3, "ERROR") or "ERROR",
                 )
             )
         return results
 
+    def clear_validation_results(self) -> None:
+        """Löscht alle bisherigen Validierungsergebnisse (z. B. vor einem neuen Lauf)."""
+        self.db.execute_query("DELETE FROM validation_results")
+
     def add_import_history(
         self, filename: str, import_date: str, records_imported: int, records_rejected: int
     ) -> None:
-        cursor = self.db.conn.cursor()
-        cursor.execute(
+        """Speichert einen Eintrag in der Import-Historie."""
+        self.db.execute_query(
             """
             INSERT INTO import_history (filename, import_date, records_imported, records_rejected)
             VALUES (?, ?, ?, ?)
             """,
             (filename, import_date, records_imported, records_rejected),
         )
-        self.db.conn.commit()
+
+    def get_import_history(self) -> List[dict]:
+        """Gibt alle Einträge der Import-Historie zurück."""
+        rows = self.db.execute_query(
+            """
+            SELECT id, filename, import_date, records_imported, records_rejected
+            FROM import_history
+            ORDER BY id DESC
+            """,
+            fetch=True,
+        ) or []
+        return [
+            {
+                "id": self._get_col(row, "id", 0),
+                "filename": self._get_col(row, "filename", 1, "") or "",
+                "import_date": self._get_col(row, "import_date", 2, "") or "",
+                "records_imported": self._get_col(row, "records_imported", 3, 0) or 0,
+                "records_rejected": self._get_col(row, "records_rejected", 4, 0) or 0,
+            }
+            for row in rows
+        ]
