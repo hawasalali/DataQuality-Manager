@@ -53,6 +53,21 @@ class ReportGenerator:
                 serialized.append({"message": str(item)})
         return serialized
 
+    def _resolve_filepath(
+        self,
+        filename: Optional[Union[str, Path]],
+        directory: Optional[Union[str, Path]],
+    ) -> Path:
+        """Löst Zielpfad und Zielverzeichnis auf und erstellt das Verzeichnis bei Bedarf."""
+        filepath = Path(filename or self.default_filename)
+        if directory is not None:
+            dir_path = Path(directory)
+            dir_path.mkdir(parents=True, exist_ok=True)
+            filepath = dir_path / filepath.name
+        elif str(filepath.parent) not in ("", "."):
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+        return filepath
+
     def generate(
         self,
         total: int,
@@ -82,14 +97,7 @@ class ReportGenerator:
             report["details"]["warnings"] = self._serialize_details(warning_details)
             report["details"]["errors"] = self._serialize_details(error_details)
 
-            filepath = Path(filename or self.default_filename)
-            if directory is not None:
-                dir_path = Path(directory)
-                dir_path.mkdir(parents=True, exist_ok=True)
-                filepath = dir_path / filepath.name
-            elif str(filepath.parent) not in ("", "."):
-                filepath.parent.mkdir(parents=True, exist_ok=True)
-
+            filepath = self._resolve_filepath(filename, directory)
             with open(filepath, "w", encoding="utf-8") as file:
                 json.dump(report, file, indent=4, ensure_ascii=False)
 
@@ -112,7 +120,11 @@ class ReportGenerator:
         res_list = results or []
 
         total = len(emp_list)
-        valid = sum(1 for emp in emp_list if getattr(emp, "status", "") == "VALID")
+        valid = sum(
+            1
+            for emp in emp_list
+            if (getattr(emp, "status", "") or "").upper() == "VALID"
+        )
 
         warnings_list: List[Dict[str, Any]] = []
         errors_list: List[Dict[str, Any]] = []
@@ -128,11 +140,15 @@ class ReportGenerator:
 
             msg_lower = str(getattr(r, "message", "") or "").lower()
             if sev == Severity.WARNING:
-                warnings_list.append(r.to_dict() if hasattr(r, "to_dict") else {"message": str(r)})
+                warnings_list.append(
+                    r.to_dict() if hasattr(r, "to_dict") else {"message": str(r)}
+                )
                 if "doppelt" in msg_lower or "duplicate" in msg_lower:
                     duplicates += 1
             elif sev == Severity.ERROR:
-                errors_list.append(r.to_dict() if hasattr(r, "to_dict") else {"message": str(r)})
+                errors_list.append(
+                    r.to_dict() if hasattr(r, "to_dict") else {"message": str(r)}
+                )
 
         return self.generate(
             total=total,
@@ -167,5 +183,7 @@ class ReportGenerator:
                 directory=directory,
             )
         except Exception as e:
-            logger.error("Fehler beim Generieren des Berichts aus Validierungsergebnissen: %s", e)
+            logger.error(
+                "Fehler beim Generieren des Berichts aus Validierungsergebnissen: %s", e
+            )
             return False

@@ -34,7 +34,9 @@ class ValidationView(QWidget):
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
         self.table.verticalHeader().setVisible(False)
 
         layout.addWidget(self.table)
@@ -88,13 +90,17 @@ class ValidationView(QWidget):
             for emp in employees:
                 if emp.id is not None:
                     full_name = f"{emp.first_name or ''} {emp.last_name or ''}".strip()
-                    emp_lookup[emp.id] = full_name or (emp.email or "") or f"ID #{emp.id}"
+                    emp_lookup[emp.id] = (
+                        full_name or (emp.email or "") or f"ID #{emp.id}"
+                    )
 
         self.table.clearSpans()
         self.table.setRowCount(len(validation_results))
 
         for row, result in enumerate(validation_results):
-            emp_id_str = str(result.employee_id) if result.employee_id is not None else ""
+            emp_id_str = (
+                str(result.employee_id) if result.employee_id is not None else ""
+            )
             self.table.setItem(row, 0, self._make_readonly_item(emp_id_str))
 
             record_name = (
@@ -124,9 +130,13 @@ class ValidationView(QWidget):
                 severity_item.setForeground(QBrush(QColor("#111111")))
             self.table.setItem(row, 4, severity_item)
 
-            self.table.setItem(row, 5, self._make_readonly_item(result.expected_format or ""))
+            self.table.setItem(
+                row, 5, self._make_readonly_item(result.expected_format or "")
+            )
 
-            actual_text = result.actual_value if result.actual_value is not None else ""
+            actual_text = (
+                str(result.actual_value) if result.actual_value is not None else ""
+            )
             actual_value_item = self._make_readonly_item(actual_text)
             actual_value_item.setToolTip(actual_text)
             self.table.setItem(row, 6, actual_value_item)

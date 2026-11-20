@@ -1,4 +1,5 @@
 from pathlib import Path
+
 import pytest
 
 from models.employee import Employee
@@ -22,9 +23,9 @@ def test_csv_path(tmp_path: Path) -> Path:
 def test_csv_content() -> str:
     """Fixture für den Inhalt der Test-CSV-Datei."""
     return (
-        "first_name,last_name,email,phone,department,hire_date\n"
-        "Max,Mustermann,max@test.de,0123456789,IT,2020-01-01\n"
-        "Anna,Schmidt,anna@test.de,987654321,HR,2019-05-20\n"
+        "first_name,last_name,email,phone,department,birth_date,hire_date\n"
+        "Max,Mustermann,max@test.de,0123456789,IT,1990-05-14,2020-01-01\n"
+        "Anna,Schmidt,anna@test.de,987654321,HR,1988-11-23,2019-05-20\n"
     )
 
 
@@ -38,8 +39,8 @@ def setup_and_teardown(test_csv_path: Path, test_csv_content: str):
 def test_import_csv_single_employee(importer: CsvImporter, test_csv_path: Path):
     """Testet den Import einer CSV-Datei mit einem Mitarbeiter."""
     test_csv_path.write_text(
-        "first_name,last_name,email,phone,department,hire_date\n"
-        "Max,Mustermann,max@test.de,0123456789,IT,2020-01-01\n",
+        "first_name,last_name,email,phone,department,birth_date,hire_date\n"
+        "Max,Mustermann,max@test.de,0123456789,IT,1990-05-14,2020-01-01\n",
         encoding="utf-8",
     )
 
@@ -52,6 +53,7 @@ def test_import_csv_single_employee(importer: CsvImporter, test_csv_path: Path):
     assert employees[0].email == "max@test.de"
     assert employees[0].phone == "0123456789"
     assert employees[0].department == "IT"
+    assert employees[0].birth_date == "1990-05-14"
     assert employees[0].hire_date == "2020-01-01"
 
 
@@ -63,6 +65,25 @@ def test_import_csv_multiple_employees(importer: CsvImporter, test_csv_path: Pat
     assert all(isinstance(emp, Employee) for emp in employees)
     assert employees[0].first_name == "Max"
     assert employees[1].first_name == "Anna"
+
+
+def test_import_csv_semicolon_and_case_insensitive_headers(
+    importer: CsvImporter, test_csv_path: Path
+):
+    """Testet Semikolon-Trennzeichen und abweichende Groß-/Kleinschreibung in Headern."""
+    test_csv_path.write_text(
+        "First_Name;Last_Name;EMAIL;Birth_Date;Hire_Date\n"
+        "Lukas;Weber;lukas@test.de;1992-03-15;2021-07-01\n",
+        encoding="utf-8",
+    )
+
+    employees = importer.import_employees(test_csv_path)
+    assert len(employees) == 1
+    assert employees[0].first_name == "Lukas"
+    assert employees[0].last_name == "Weber"
+    assert employees[0].email == "lukas@test.de"
+    assert employees[0].birth_date == "1992-03-15"
+    assert employees[0].hire_date == "2021-07-01"
 
 
 def test_import_csv_empty_file(importer: CsvImporter, test_csv_path: Path):
@@ -86,8 +107,8 @@ def test_import_csv_invalid_data_detected_by_validator(
 ):
     """Testet, dass ungültige CSV-Zeilen eingelesen und vom Validator als INVALID markiert werden."""
     test_csv_path.write_text(
-        "first_name,last_name,email,phone,department,hire_date\n"
-        ",,invalid-email,,,\n",
+        "first_name,last_name,email,phone,department,birth_date,hire_date\n"
+        ",,invalid-email,,,,\n",
         encoding="utf-8",
     )
 

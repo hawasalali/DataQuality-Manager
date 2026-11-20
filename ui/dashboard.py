@@ -30,14 +30,21 @@ class Dashboard(QWidget):
         }
 
         main_layout = QVBoxLayout()
-        stats_layout = QHBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(6)
 
-        self.total_label = self._create_label("DB Total: 0")
-        self.valid_label = self._create_label("Valid: 0")
-        self.warning_label = self._create_label("Warnings: 0")
-        self.error_label = self._create_label("Errors: 0")
+        stats_layout = QHBoxLayout()
+        stats_layout.setContentsMargins(8, 8, 8, 8)
+        stats_layout.setSpacing(8)
+
+        self.total_label = self._create_label("DB Total: 0", "#2f3b52", "#3d4d6b")
+        self.valid_label = self._create_label("Valid: 0", "#238636", "#2ea043")
+        self.warning_label = self._create_label("Warnings: 0", "#9e6a03", "#bb8009")
+        self.error_label = self._create_label("Errors: 0", "#b62324", "#da3633")
         self.duplicate_label: Optional[QLabel] = (
-            self._create_label("Duplicates: 0") if show_duplicates else None
+            self._create_label("Duplicates: 0", "#6e40c9", "#8957e5")
+            if show_duplicates
+            else None
         )
 
         stats_layout.addWidget(self.total_label)
@@ -50,30 +57,36 @@ class Dashboard(QWidget):
 
         stats_frame = QFrame()
         stats_frame.setLayout(stats_layout)
-        stats_frame.setFrameShape(QFrame.Shape.Panel)
-        stats_frame.setFrameShadow(QFrame.Shadow.Raised)
-        stats_frame.setLineWidth(1)
+        stats_frame.setStyleSheet(
+            """
+            QFrame {
+                background-color: #202632;
+                border: 1px solid #2f3747;
+                border-radius: 8px;
+            }
+            """
+        )
         main_layout.addWidget(stats_frame)
 
         self.setLayout(main_layout)
         self.setWindowTitle("Mitarbeiter-Dashboard")
         self.adjustSize()
 
-    def _create_label(self, text: str) -> QLabel:
+    def _create_label(self, text: str, bg_color: str, border_color: str) -> QLabel:
         """Erstellt ein QLabel mit einheitlichem Stil."""
         label = QLabel(text)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         label.setStyleSheet(
-            """
-            QLabel {
-                background-color: #f0f0f0;
-                color: #111111;
-                border: 1px solid #cccccc;
-                border-radius: 4px;
-                padding: 8px;
-                font-weight: bold;
-            }
+            f"""
+            QLabel {{
+                background-color: {bg_color};
+                color: #ffffff;
+                border: 1px solid {border_color};
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-weight: 600;
+            }}
             """
         )
         return label

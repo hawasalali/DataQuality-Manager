@@ -29,22 +29,40 @@ class StatisticsService:
             return getattr(item, "message", default)
         return getattr(item, key, default)
 
-    def calculate(self, employees: List[Employee]) -> Tuple[int, int, int, int]:
+    @staticmethod
+    def _has_duplicate_marker(text: Optional[str]) -> bool:
+        """Prüft, ob ein Text auf einen doppelten Datensatz hinweist."""
+        lowered = str(text or "").lower()
+        return "doppelt" in lowered or "duplicate" in lowered
+
+    def calculate(
+        self, employees: Optional[List[Employee]]
+    ) -> Tuple[int, int, int, int]:
         """Berechnet Statistiken (total, valid, warnings, errors) für eine Liste von Mitarbeitern."""
         if not employees:
             return 0, 0, 0, 0
 
         total = len(employees)
-        valid = sum(1 for e in employees if (getattr(e, "status", "") or "").upper() == "VALID")
-        warning = sum(1 for e in employees if (getattr(e, "status", "") or "").upper() == "WARNING")
+        valid = sum(
+            1
+            for e in employees
+            if (getattr(e, "status", "") or "").upper() == "VALID"
+        )
+        warning = sum(
+            1
+            for e in employees
+            if (getattr(e, "status", "") or "").upper() == "WARNING"
+        )
         error = sum(
-            1 for e in employees if (getattr(e, "status", "") or "").upper() in ("ERROR", "INVALID")
+            1
+            for e in employees
+            if (getattr(e, "status", "") or "").upper() in ("ERROR", "INVALID")
         )
 
         return total, valid, warning, error
 
     def calculate_from_validation_results(
-        self, validation_results: List[Any]
+        self, validation_results: Optional[List[Any]]
     ) -> Dict[str, int]:
         """Berechnet Statistiken basierend auf einer Liste von Validierungsergebnissen."""
         if not validation_results:
@@ -57,13 +75,21 @@ class StatisticsService:
             }
 
         total = len(validation_results)
-        valid = sum(1 for r in validation_results if bool(self._extract_field(r, "is_valid", False)))
+        valid = sum(
+            1
+            for r in validation_results
+            if bool(self._extract_field(r, "is_valid", False))
+        )
         warnings = sum(
             1
             for r in validation_results
             if not bool(self._extract_field(r, "is_valid", False))
             and str(
-                getattr(self._extract_field(r, "severity", ""), "value", self._extract_field(r, "severity", ""))
+                getattr(
+                    self._extract_field(r, "severity", ""),
+                    "value",
+                    self._extract_field(r, "severity", ""),
+                )
             ).upper()
             == "WARNING"
         )
@@ -72,7 +98,11 @@ class StatisticsService:
             for r in validation_results
             if not bool(self._extract_field(r, "is_valid", False))
             and str(
-                getattr(self._extract_field(r, "severity", ""), "value", self._extract_field(r, "severity", ""))
+                getattr(
+                    self._extract_field(r, "severity", ""),
+                    "value",
+                    self._extract_field(r, "severity", ""),
+                )
             ).upper()
             == "ERROR"
         )
@@ -80,8 +110,7 @@ class StatisticsService:
             1
             for r in validation_results
             if bool(self._extract_field(r, "is_duplicate", False))
-            or "doppelt" in str(self._extract_field(r, "message", "") or "").lower()
-            or "duplicate" in str(self._extract_field(r, "message", "") or "").lower()
+            or self._has_duplicate_marker(self._extract_field(r, "message", ""))
         )
 
         return {
@@ -123,9 +152,9 @@ class StatisticsService:
             duplicates = sum(
                 1
                 for e in employees
-                if "doppelt" in (getattr(e, "error_message", "") or "").lower()
+                if self._has_duplicate_marker(getattr(e, "error_message", ""))
                 or any(
-                    "doppelt" in str(msg).lower() or "duplicate" in str(msg).lower()
+                    self._has_duplicate_marker(msg)
                     for msg in (getattr(e, "validation_errors", None) or [])
                 )
             )

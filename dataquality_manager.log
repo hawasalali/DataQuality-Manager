@@ -75,3 +75,40 @@
 2026-11-20 09:46:37,282 - database.connection - INFO - Erfolgreich mit SQLITE-Datenbank verbunden.
 2026-11-20 09:46:37,283 - database.connection - INFO - Tabellen erfolgreich aus /home/hawas/DataQuality-Manager/database/schema.sql erstellt.
 2026-11-20 09:46:37,331 - __main__ - INFO - Anwendung erfolgreich gestartet.
+2026-11-20 09:55:08,166 - __main__ - INFO - Starte Anwendung...
+2026-11-20 09:55:08,166 - __main__ - INFO - Datenverzeichnis: /home/hawas/DataQuality-Manager/data
+2026-11-20 09:55:08,166 - __main__ - INFO - Berichtsverzeichnis: /home/hawas/DataQuality-Manager/reports
+2026-11-20 09:55:08,166 - __main__ - INFO - Datenbank gefunden: /home/hawas/DataQuality-Manager/data/dataquality.db
+2026-11-20 09:55:08,166 - database.connection - INFO - Erfolgreich mit SQLITE-Datenbank verbunden.
+2026-11-20 09:55:08,167 - database.connection - INFO - Tabellen erfolgreich aus /home/hawas/DataQuality-Manager/database/schema.sql erstellt.
+2026-11-20 09:55:08,219 - __main__ - INFO - Anwendung erfolgreich gestartet.
+2026-11-20 10:20:00,818 - __main__ - INFO - Starte Anwendung...
+2026-11-20 10:20:00,818 - __main__ - INFO - Datenverzeichnis: /home/hawas/DataQuality-Manager/data
+2026-11-20 10:20:00,818 - __main__ - INFO - Berichtsverzeichnis: /home/hawas/DataQuality-Manager/reports
+2026-11-20 10:20:00,818 - __main__ - INFO - Datenbank gefunden: /home/hawas/DataQuality-Manager/data/dataquality.db
+2026-11-20 10:20:00,819 - database.connection - INFO - Erfolgreich mit SQLITE-Datenbank verbunden.
+2026-11-20 10:20:00,819 - database.connection - INFO - Tabellen erfolgreich aus /home/hawas/DataQuality-Manager/database/schema.sql erstellt.
+2026-11-20 10:20:00,914 - __main__ - INFO - Anwendung erfolgreich gestartet.
+2026-11-20 10:20:10,799 - __main__ - INFO - Starte Anwendung...
+2026-11-20 10:20:10,799 - __main__ - INFO - Datenverzeichnis: /home/hawas/DataQuality-Manager/data
+2026-11-20 10:20:10,799 - __main__ - INFO - Berichtsverzeichnis: /home/hawas/DataQuality-Manager/reports
+2026-11-20 10:20:10,800 - __main__ - INFO - Datenbank gefunden: /home/hawas/DataQuality-Manager/data/dataquality.db
+2026-11-20 10:20:10,800 - database.connection - INFO - Erfolgreich mit SQLITE-Datenbank verbunden.
+2026-11-20 10:20:10,800 - database.connection - INFO - Tabellen erfolgreich aus /home/hawas/DataQuality-Manager/database/schema.sql erstellt.
+2026-11-20 10:20:10,879 - __main__ - INFO - Anwendung erfolgreich gestartet.
+2026-11-20 10:27:59,460 - __main__ - INFO - Starte Anwendung...
+2026-11-20 10:27:59,460 - __main__ - INFO - Datenverzeichnis: /home/hawas/DataQuality-Manager/data
+2026-11-20 10:27:59,460 - __main__ - INFO - Berichtsverzeichnis: /home/hawas/DataQuality-Manager/reports
+2026-11-20 10:27:59,460 - __main__ - INFO - Datenbank gefunden: /home/hawas/DataQuality-Manager/data/dataquality.db
+2026-11-20 10:27:59,460 - database.connection - INFO - Erfolgreich mit SQLITE-Datenbank verbunden.
+2026-11-20 10:27:59,461 - database.connection - INFO - Tabellen erfolgreich aus /home/hawas/DataQuality-Manager/database/schema.sql erstellt.
+2026-11-20 10:27:59,547 - __main__ - INFO - Anwendung erfolgreich gestartet.
+2026-11-20 10:55:54,855 - __main__ - INFO - Starte Anwendung...
+2026-11-20 10:55:54,855 - database.connection - INFO - Erfolgreich mit SQLITE-Datenbank verbunden.
+2026-11-20 10:55:54,855 - database.connection - INFO - Tabellen erfolgreich aus /home/hawas/DataQuality-Manager/database/schema.sql erstellt.
+2026-11-20 10:55:54,928 - __main__ - INFO - Anwendung erfolgreich gestartet.
+2026-11-20 10:56:21,938 - database.connection - INFO - Datenbankverbindung erfolgreich geschlossen.
+2026-11-20 11:29:16,062 - __main__ - INFO - Starte DataQuality Manager...
+2026-11-20 11:29:16,063 - database.connection - INFO - Erfolgreich mit SQLITE-Datenbank verbunden.
+2026-11-20 11:29:16,185 - database.connection - INFO - Tabellen erfolgreich aus /home/hawas/DataQuality-Manager/database/schema.sql erstellt.
+2026-11-20 11:29:16,248 - __main__ - INFO - Anwendung erfolgreich gestartet.

@@ -1,5 +1,4 @@
 import sys
-import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -43,107 +42,40 @@ from services.csv_importer import CsvImporter
 from services.data_validator import DataValidator
 from services.report_generator import ReportGenerator
 from services.statistics_service import StatisticsService
+from services.xml_service import XmlService
 
-
-PROFESSIONAL_QSS = """
-QMainWindow {
-    background-color: #181c24;
-    color: #e6edf3;
-}
-QWidget {
-    font-family: "Segoe UI", "DejaVu Sans", sans-serif;
-    font-size: 13px;
-    color: #e6edf3;
-}
-QFrame#TopBar {
-    background-color: #202632;
-    border: 1px solid #2f3747;
-    border-radius: 8px;
-}
-QLabel#SectionTitle {
-    font-size: 15px;
-    font-weight: 600;
-    color: #f0f6fc;
-    padding: 2px 0px;
-}
-QLineEdit, QComboBox {
-    background-color: #12161f;
-    border: 1px solid #343d4f;
-    border-radius: 6px;
-    padding: 6px 10px;
-    color: #e6edf3;
-    selection-background-color: #2f81f7;
-}
-QLineEdit:focus, QComboBox:focus {
-    border: 1px solid #58a6ff;
-}
-QPushButton {
-    background-color: #262e3d;
-    border: 1px solid #3b465c;
-    border-radius: 6px;
-    padding: 6px 12px;
-    font-weight: 500;
-    color: #e6edf3;
-}
-QPushButton:hover {
-    background-color: #323d52;
-    border-color: #58a6ff;
-}
-QPushButton:pressed {
-    background-color: #1c222e;
-}
-QPushButton#PrimaryButton {
-    background-color: #238636;
-    border: 1px solid #2ea043;
-    color: #ffffff;
-    font-weight: 600;
-}
-QPushButton#PrimaryButton:hover {
-    background-color: #2ea043;
-}
-QPushButton#DangerButton {
-    background-color: #da3633;
-    border: 1px solid #f85149;
-    color: #ffffff;
-    font-weight: 600;
-}
-QPushButton#DangerButton:hover {
-    background-color: #e5534b;
-}
-QTableWidget {
-    background-color: #12161f;
-    alternate-background-color: #171c27;
-    gridline-color: #262e3d;
-    border: 1px solid #2f3747;
-    border-radius: 8px;
-    selection-background-color: #1f6feb;
-    selection-color: #ffffff;
-}
-QHeaderView::section {
-    background-color: #202632;
-    color: #c9d1d9;
-    font-weight: 600;
-    padding: 7px 8px;
-    border: none;
-    border-right: 1px solid #2f3747;
-    border-bottom: 1px solid #343d4f;
-}
-QSplitter::handle {
-    background-color: #2f3747;
-    height: 3px;
-    margin: 2px 20px;
-    border-radius: 1px;
-}
-QStatusBar {
-    background-color: #202632;
-    color: #8b949e;
-    border-top: 1px solid #2f3747;
-}
+DARK_THEME_QSS = """
+QMainWindow, QDialog { background-color: #181c24; color: #e6edf3; }
+QWidget { font-family: "Segoe UI", "DejaVu Sans", sans-serif; font-size: 13px; color: #e6edf3; }
+QFrame#TopBar { background-color: #202632; border: 1px solid #2f3747; border-radius: 8px; }
+QLabel#SectionTitle { font-size: 15px; font-weight: 600; color: #f0f6fc; }
+QLineEdit, QComboBox { background-color: #12161f; border: 1px solid #343d4f; border-radius: 6px; padding: 6px 10px; color: #e6edf3; }
+QLineEdit:focus, QComboBox:focus { border: 1px solid #58a6ff; }
+QPushButton { background-color: #262e3d; border: 1px solid #3b465c; border-radius: 6px; padding: 6px 12px; font-weight: 500; color: #e6edf3; }
+QPushButton:hover { background-color: #323d52; border-color: #58a6ff; }
+QPushButton#PrimaryButton { background-color: #238636; border: 1px solid #2ea043; color: #ffffff; font-weight: 600; }
+QPushButton#DangerButton { background-color: #da3633; border: 1px solid #f85149; color: #ffffff; font-weight: 600; }
+QTableWidget { background-color: #12161f; alternate-background-color: #171c27; gridline-color: #262e3d; border: 1px solid #2f3747; border-radius: 8px; selection-background-color: #1f6feb; selection-color: #ffffff; }
+QHeaderView::section { background-color: #202632; color: #c9d1d9; font-weight: 600; padding: 7px 8px; border: none; border-right: 1px solid #2f3747; border-bottom: 1px solid #343d4f; }
+QSplitter::handle { background-color: #2f3747; height: 3px; margin: 2px 20px; }
+QStatusBar { background-color: #202632; color: #8b949e; border-top: 1px solid #2f3747; }
 """
 
 
+class _SortableIdItem(QTableWidgetItem):
+    """Sortierbares Tabellen-Item für numerische IDs."""
+
+    def __lt__(self, other: "QTableWidgetItem") -> bool:
+        try:
+            return int(self.data(Qt.ItemDataRole.UserRole) or 0) < int(
+                other.data(Qt.ItemDataRole.UserRole) or 0
+            )
+        except (TypeError, ValueError):
+            return super().__lt__(other)
+
+
 class EmployeeEditDialog(QDialog):
-    """Professioneller Dialog zum Anlegen oder Bearbeiten eines Mitarbeiters."""
+    """Dialog zum Anlegen oder Bearbeiten eines Mitarbeiters."""
 
     def __init__(
         self, employee: Optional[Employee] = None, parent: Optional[QWidget] = None
@@ -153,14 +85,11 @@ class EmployeeEditDialog(QDialog):
         self.setWindowTitle(
             "Edit Employee" if self.employee.id is not None else "New Employee"
         )
-        self.setMinimumWidth(400)
+        self.setStyleSheet(DARK_THEME_QSS)
+        self.setMinimumWidth(420)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(12)
-
         form = QFormLayout()
-        form.setSpacing(8)
 
         self.first_name_input = QLineEdit(self.employee.first_name or "")
         self.last_name_input = QLineEdit(self.employee.last_name or "")
@@ -170,7 +99,7 @@ class EmployeeEditDialog(QDialog):
         self.department_combo = QComboBox()
         self.department_combo.setEditable(True)
         departments = ["", "IT", "HR", "Sales", "Finance", "Marketing", "Operations"]
-        current_dept = self.employee.department or ""
+        current_dept = (self.employee.department or "").strip()
         if current_dept and current_dept not in departments:
             departments.insert(1, current_dept)
         self.department_combo.addItems(departments)
@@ -178,30 +107,31 @@ class EmployeeEditDialog(QDialog):
 
         self.birth_date_input = QLineEdit(self.employee.birth_date or "")
         self.birth_date_input.setPlaceholderText("YYYY-MM-DD")
-
         self.hire_date_input = QLineEdit(self.employee.hire_date or "")
         self.hire_date_input.setPlaceholderText("YYYY-MM-DD")
 
-        form.addRow("First Name *:", self.first_name_input)
-        form.addRow("Last Name *:", self.last_name_input)
-        form.addRow("Email *:", self.email_input)
-        form.addRow("Phone:", self.phone_input)
-        form.addRow("Department:", self.department_combo)
-        form.addRow("Birth Date:", self.birth_date_input)
-        form.addRow("Hire Date:", self.hire_date_input)
+        for text, widget in [
+            ("First Name *:", self.first_name_input),
+            ("Last Name *:", self.last_name_input),
+            ("Email *:", self.email_input),
+            ("Phone:", self.phone_input),
+            ("Department:", self.department_combo),
+            ("Birth Date:", self.birth_date_input),
+            ("Hire Date:", self.hire_date_input),
+        ]:
+            lbl = QLabel(text)
+            lbl.setStyleSheet("color: #e6edf3; font-weight: 500;")
+            form.addRow(lbl, widget)
 
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Save
+            QDialogButtonBox.StandardButton.Cancel
+            | QDialogButtonBox.StandardButton.Save
         )
-        cancel_btn = buttons.button(QDialogButtonBox.StandardButton.Cancel)
         save_btn = buttons.button(QDialogButtonBox.StandardButton.Save)
-        if cancel_btn:
-            cancel_btn.setText("Cancel")
         if save_btn:
-            save_btn.setText("Save")
-
+            save_btn.setObjectName("PrimaryButton")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -216,12 +146,12 @@ class EmployeeEditDialog(QDialog):
             department=self.department_combo.currentText().strip(),
             birth_date=self.birth_date_input.text().strip(),
             hire_date=self.hire_date_input.text().strip(),
-            status=self.employee.status or "VALID",
+            status=(self.employee.status or "VALID").upper(),
         )
 
 
 class MainWindow(QMainWindow):
-    """Hauptfenster im Single-View-Design mit CSV-, XML- und JSON-Unterstützung[cite: 6]."""
+    """Einheitliches Hauptfenster mit SQLite-Ansicht sowie CSV/XML-Vorschau & Validierung."""
 
     DB_COLUMNS = [
         "ID",
@@ -233,7 +163,6 @@ class MainWindow(QMainWindow):
         "Geburtsdatum",
         "Status",
     ]
-
     PREVIEW_COLUMNS = [
         "Zeile",
         "Vorname",
@@ -247,16 +176,13 @@ class MainWindow(QMainWindow):
     ]
 
     def __init__(
-        self,
-        db: Optional[DatabaseConnection] = None,
-        parent: Optional[QWidget] = None,
+        self, db: Optional[DatabaseConnection] = None, parent: Optional[QWidget] = None
     ):
         super().__init__(parent)
-
         self.setWindowTitle("DataQuality Manager")
         self.setWindowIcon(QIcon.fromTheme("applications-development"))
         self.resize(1420, 900)
-        self.setStyleSheet(PROFESSIONAL_QSS)
+        self.setStyleSheet(DARK_THEME_QSS)
 
         if db is None:
             self.db = DatabaseConnection(str(PROJECT_ROOT / "data" / "dataquality.db"))
@@ -267,6 +193,7 @@ class MainWindow(QMainWindow):
         self.repository = EmployeeRepository(self.db)
         self.importer = CsvImporter()
         self.exporter = CsvExporter()
+        self.xml_service = XmlService()
         self.validator = DataValidator()
         self.report_generator = ReportGenerator()
         self.stats_service = StatisticsService()
@@ -275,85 +202,66 @@ class MainWindow(QMainWindow):
         self._employees_by_id: Dict[int, Employee] = {}
         self.validation_results: List[ValidationResult] = []
         self.preview_employees: List[Employee] = []
+        self.preview_validation_results: List[ValidationResult] = []
         self.current_source_path: Optional[str] = None
 
         self._build_ui()
         self._connect_signals()
         self.refresh_all_views()
 
-    def _create_badge(
-        self, text: str, bg_color: str, fg_color: str = "#ffffff"
-    ) -> QLabel:
-        badge = QLabel(text)
-        badge.setStyleSheet(
-            f"""
-            QLabel {{
-                background-color: {bg_color};
-                color: {fg_color};
-                border-radius: 6px;
-                padding: 5px 11px;
-                font-weight: 600;
-            }}
-            """
+    def _badge(self, text: str, bg: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setStyleSheet(
+            f"background-color: {bg}; color: #ffffff; border-radius: 6px; padding: 5px 11px; font-weight: 600;"
         )
-        return badge
+        return lbl
 
     def _build_ui(self) -> None:
         central = QWidget()
         self.setCentralWidget(central)
-        root_layout = QVBoxLayout(central)
-        root_layout.setContentsMargins(12, 12, 12, 8)
-        root_layout.setSpacing(10)
+        root = QVBoxLayout(central)
+        root.setContentsMargins(12, 12, 12, 8)
+        root.setSpacing(10)
 
-        # 1. Obere Statistik- & Import-Historien-Leiste[cite: 6]
         top_frame = QFrame()
         top_frame.setObjectName("TopBar")
-        top_layout = QHBoxLayout(top_frame)
-        top_layout.setContentsMargins(10, 8, 10, 8)
-        top_layout.setSpacing(8)
-
-        self.db_total_badge = self._create_badge("DB Gesamt: 0", "#2f3b52")
-        self.csv_checked_badge = self._create_badge("Quelle Geprüft: 0", "#37435c")
-        self.valid_badge = self._create_badge("Gültig: 0", "#238636")
-        self.warning_badge = self._create_badge("Warnungen: 0", "#b07219")
-        self.error_badge = self._create_badge("Fehler: 0", "#b62324")
-
+        top = QHBoxLayout(top_frame)
+        self.db_total_badge = self._badge("DB Gesamt: 0", "#2f3b52")
+        self.source_checked_badge = self._badge("Quelle Geprüft: 0", "#37435c")
+        self.valid_badge = self._badge("Gültig: 0", "#238636")
+        self.warning_badge = self._badge("Warnungen: 0", "#b07219")
+        self.error_badge = self._badge("Fehler: 0", "#b62324")
         self.history_combo = QComboBox()
-        self.history_combo.setMinimumWidth(360)
+        self.history_combo.setMinimumWidth(350)
         self.history_combo.addItem("Import-Historie: Keine Einträge")
 
-        top_layout.addWidget(self.db_total_badge)
-        top_layout.addWidget(self.csv_checked_badge)
-        top_layout.addWidget(self.valid_badge)
-        top_layout.addWidget(self.warning_badge)
-        top_layout.addWidget(self.error_badge)
-        top_layout.addStretch()
-        top_layout.addWidget(self.history_combo)
-
-        root_layout.addWidget(top_frame)
+        for w in [
+            self.db_total_badge,
+            self.source_checked_badge,
+            self.valid_badge,
+            self.warning_badge,
+            self.error_badge,
+        ]:
+            top.addWidget(w)
+        top.addStretch()
+        top.addWidget(self.history_combo)
+        root.addWidget(top_frame)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
 
-        # 2. Mittlerer Bereich: SQLite Datenbank - Mitarbeiter[cite: 6]
-        db_section = QWidget()
-        db_layout = QVBoxLayout(db_section)
-        db_layout.setContentsMargins(0, 4, 0, 4)
-        db_layout.setSpacing(6)
-
+        # Mitte: SQLite-Datenbank
+        db_box = QWidget()
+        db_layout = QVBoxLayout(db_box)
         db_title = QLabel("SQLite Datenbank - Mitarbeiter")
         db_title.setObjectName("SectionTitle")
         db_layout.addWidget(db_title)
 
-        db_toolbar = QHBoxLayout()
-        db_toolbar.setSpacing(8)
-
+        db_bar = QHBoxLayout()
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Suche nach Name oder E-Mail...")
         self.search_input.setMaximumWidth(250)
-
         self.department_filter = QComboBox()
         self.department_filter.addItem("Alle")
-
         self.delete_db_btn = QPushButton("Delete")
         self.delete_db_btn.setObjectName("DangerButton")
         self.edit_db_btn = QPushButton("Edit")
@@ -362,122 +270,118 @@ class MainWindow(QMainWindow):
         self.export_xml_btn = QPushButton("XML exportieren")
         self.export_json_btn = QPushButton("JSON-Report exportieren")
 
-        db_toolbar.addWidget(self.search_input)
-        db_toolbar.addWidget(QLabel("Abteilung:"))
-        db_toolbar.addWidget(self.department_filter)
-        db_toolbar.addStretch()
-        db_toolbar.addWidget(self.delete_db_btn)
-        db_toolbar.addWidget(self.edit_db_btn)
-        db_toolbar.addWidget(self.add_db_btn)
-        db_toolbar.addWidget(self.export_csv_btn)
-        db_toolbar.addWidget(self.export_xml_btn)
-        db_toolbar.addWidget(self.export_json_btn)
-        db_layout.addLayout(db_toolbar)
+        for w in [
+            self.search_input,
+            QLabel("Abteilung:"),
+            self.department_filter,
+        ]:
+            db_bar.addWidget(w)
+        db_bar.addStretch()
+        for w in [
+            self.delete_db_btn,
+            self.edit_db_btn,
+            self.add_db_btn,
+            self.export_csv_btn,
+            self.export_xml_btn,
+            self.export_json_btn,
+        ]:
+            db_bar.addWidget(w)
+        db_layout.addLayout(db_bar)
 
-        self.db_table = QTableWidget()
-        self.db_table.setColumnCount(len(self.DB_COLUMNS))
-        self.db_table.setHorizontalHeaderLabels(self.DB_COLUMNS)
-        self.db_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.db_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.db_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.db_table.setAlternatingRowColors(True)
-        self.db_table.setSortingEnabled(True)
-        self.db_table.verticalHeader().setVisible(False)
-        self.db_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.db_table = self._make_table(self.DB_COLUMNS, sortable=True)
         db_layout.addWidget(self.db_table)
+        splitter.addWidget(db_box)
 
-        splitter.addWidget(db_section)
+        # Unten: CSV / XML Import-Vorschau & Validierung
+        imp_box = QWidget()
+        imp_layout = QVBoxLayout(imp_box)
+        imp_title = QLabel("CSV / XML Import-Vorschau & Validierung")
+        imp_title.setObjectName("SectionTitle")
+        imp_layout.addWidget(imp_title)
 
-        # 3. Unterer Bereich: CSV / XML Import-Vorschau & Validierung[cite: 6]
-        import_section = QWidget()
-        import_layout = QVBoxLayout(import_section)
-        import_layout.setContentsMargins(0, 4, 0, 0)
-        import_layout.setSpacing(6)
-
-        import_title = QLabel("CSV / XML Import-Vorschau & Validierung")
-        import_title.setObjectName("SectionTitle")
-        import_layout.addWidget(import_title)
-
-        import_toolbar = QHBoxLayout()
-        import_toolbar.setSpacing(8)
-
+        imp_bar = QHBoxLayout()
         self.load_csv_btn = QPushButton("CSV laden")
         self.load_xml_btn = QPushButton("XML laden")
+        self.export_preview_json_btn = QPushButton("JSON-Report exportieren")
         self.preview_file_label = QLabel("Keine Datei geladen")
         self.preview_file_label.setStyleSheet("color: #8b949e;")
-
         self.edit_preview_btn = QPushButton("Bearbeiten")
         self.delete_preview_btn = QPushButton("Löschen")
         self.commit_db_btn = QPushButton("In DB übernehmen")
         self.commit_db_btn.setObjectName("PrimaryButton")
 
-        import_toolbar.addWidget(self.load_csv_btn)
-        import_toolbar.addWidget(self.load_xml_btn)
-        import_toolbar.addWidget(self.preview_file_label)
-        import_toolbar.addStretch()
-        import_toolbar.addWidget(self.edit_preview_btn)
-        import_toolbar.addWidget(self.delete_preview_btn)
-        import_toolbar.addWidget(self.commit_db_btn)
-        import_layout.addLayout(import_toolbar)
+        for w in [
+            self.load_csv_btn,
+            self.load_xml_btn,
+            self.export_preview_json_btn,
+            self.preview_file_label,
+        ]:
+            imp_bar.addWidget(w)
+        imp_bar.addStretch()
+        for w in [self.edit_preview_btn, self.delete_preview_btn, self.commit_db_btn]:
+            imp_bar.addWidget(w)
+        imp_layout.addLayout(imp_bar)
 
-        self.preview_table = QTableWidget()
-        self.preview_table.setColumnCount(len(self.PREVIEW_COLUMNS))
-        self.preview_table.setHorizontalHeaderLabels(self.PREVIEW_COLUMNS)
-        self.preview_table.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows
-        )
-        self.preview_table.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection
-        )
-        self.preview_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.preview_table.setAlternatingRowColors(True)
-        self.preview_table.verticalHeader().setVisible(False)
-        self.preview_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
-        import_layout.addWidget(self.preview_table)
-
-        splitter.addWidget(import_section)
+        self.preview_table = self._make_table(self.PREVIEW_COLUMNS, sortable=False)
+        imp_layout.addWidget(self.preview_table)
+        splitter.addWidget(imp_box)
         splitter.setSizes([460, 320])
+        root.addWidget(splitter)
 
-        root_layout.addWidget(splitter)
-
-        status_bar = QStatusBar()
-        self.setStatusBar(status_bar)
+        self.setStatusBar(QStatusBar())
         self.statusBar().showMessage("Bereit — CSV, XML, JSON und SQLite aktiv")
+
+    def _make_table(self, headers: List[str], sortable: bool) -> QTableWidget:
+        tbl = QTableWidget()
+        tbl.setColumnCount(len(headers))
+        tbl.setHorizontalHeaderLabels(headers)
+        tbl.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        tbl.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        tbl.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        tbl.setAlternatingRowColors(True)
+        tbl.setSortingEnabled(sortable)
+        tbl.verticalHeader().setVisible(False)
+        tbl.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        return tbl
 
     def _connect_signals(self) -> None:
         self.search_input.textChanged.connect(self._render_db_table)
         self.department_filter.currentTextChanged.connect(self._render_db_table)
-
         self.add_db_btn.clicked.connect(self._on_add_employee)
         self.edit_db_btn.clicked.connect(self._on_edit_employee)
         self.delete_db_btn.clicked.connect(self._on_delete_employee)
         self.db_table.cellDoubleClicked.connect(lambda *_: self._on_edit_employee())
-
         self.export_csv_btn.clicked.connect(self._on_export_csv)
         self.export_xml_btn.clicked.connect(self._on_export_xml)
-        self.export_json_btn.clicked.connect(self._on_export_json_report)
-
+        self.export_json_btn.clicked.connect(self._on_export_db_json_report)
         self.load_csv_btn.clicked.connect(self._on_load_csv)
         self.load_xml_btn.clicked.connect(self._on_load_xml)
+        self.export_preview_json_btn.clicked.connect(self._on_export_preview_json_report)
         self.edit_preview_btn.clicked.connect(self._on_edit_preview_row)
         self.delete_preview_btn.clicked.connect(self._on_delete_preview_row)
         self.commit_db_btn.clicked.connect(self._on_commit_preview_to_db)
 
+    def _sync_validation_results_to_db(self) -> None:
+        """Synchronisiert aktuelle Validierungsfehler/-warnungen mit validation_results."""
+        clear_fn = getattr(self.repository, "clear_validation_results", None)
+        add_fn = getattr(self.repository, "add_validation_result", None)
+        if callable(clear_fn) and callable(add_fn):
+            clear_fn()
+            for res in self.validation_results:
+                if not getattr(res, "is_valid", False):
+                    add_fn(res)
+
     def refresh_all_views(self) -> None:
-        """Lädt Mitarbeiter aus SQLite, validiert sie und aktualisiert alle Bereiche."""
         try:
             self.employees = self.repository.get_all()
             self._employees_by_id = {
-                emp.id: emp for emp in self.employees if emp.id is not None
+                e.id: e for e in self.employees if e.id is not None
             }
             self.validation_results = self.validator.validate_all(self.employees)
-
             for emp in self.employees:
                 if emp.id is not None:
                     self.repository.update(emp)
-
+            self._sync_validation_results_to_db()
             self._refresh_department_filter()
             self._render_db_table()
             self._refresh_history_combo()
@@ -490,17 +394,17 @@ class MainWindow(QMainWindow):
 
     def _refresh_department_filter(self) -> None:
         current = self.department_filter.currentText()
-        departments = sorted(
+        depts = sorted(
             {
-                (emp.department or "").strip()
-                for emp in self.employees
-                if (emp.department or "").strip()
+                (e.department or "").strip()
+                for e in self.employees
+                if (e.department or "").strip()
             }
         )
         self.department_filter.blockSignals(True)
         self.department_filter.clear()
         self.department_filter.addItem("Alle")
-        self.department_filter.addItems(departments)
+        self.department_filter.addItems(depts)
         idx = self.department_filter.findText(current)
         if idx >= 0:
             self.department_filter.setCurrentIndex(idx)
@@ -508,391 +412,319 @@ class MainWindow(QMainWindow):
 
     def _refresh_history_combo(self) -> None:
         self.history_combo.clear()
-        history_getter = getattr(self.repository, "get_import_history", None)
-        entries = history_getter() if callable(history_getter) else []
+        getter = getattr(self.repository, "get_import_history", None)
+        entries = getter() if callable(getter) else []
         if not entries:
             self.history_combo.addItem("Import-Historie: Keine Einträge")
             return
-
         for item in entries:
             if isinstance(item, dict):
-                fname = item.get("filename", "import.csv")
-                date_str = item.get("import_date", "")
-                imp_cnt = item.get("records_imported", 0)
-                rej_cnt = item.get("records_rejected", 0)
                 self.history_combo.addItem(
-                    f"Import-Historie: {fname} ({date_str} | {imp_cnt} importiert, {rej_cnt} abgelehnt)"
+                    f"Import-Historie: {item.get('filename', 'import.csv')} "
+                    f"({item.get('import_date', '')} | {item.get('records_imported', 0)} importiert, "
+                    f"{item.get('records_rejected', 0)} abgelehnt)"
                 )
             else:
                 self.history_combo.addItem(f"Import-Historie: {item}")
 
     def _update_top_stats(self) -> None:
         stats = self.stats_service.get_statistics_as_dict(employees=self.employees)
-        db_total = stats.get("total", len(self.employees))
-        checked_cnt = len(self.preview_employees)
+        src = (
+            self.stats_service.get_statistics_as_dict(employees=self.preview_employees)
+            if self.preview_employees
+            else stats
+        )
+        self.db_total_badge.setText(f"DB Gesamt: {stats.get('total', len(self.employees))}")
+        self.source_checked_badge.setText(
+            f"Quelle Geprüft: {len(self.preview_employees)}"
+        )
+        self.valid_badge.setText(f"Gültig: {src.get('valid', 0)}")
+        self.warning_badge.setText(f"Warnungen: {src.get('warnings', 0)}")
+        self.error_badge.setText(f"Fehler: {src.get('errors', 0)}")
 
-        if self.preview_employees:
-            p_stats = self.stats_service.get_statistics_as_dict(
-                employees=self.preview_employees
-            )
-            valid_cnt = p_stats.get("valid", 0)
-            warn_cnt = p_stats.get("warnings", 0)
-            err_cnt = p_stats.get("errors", 0)
-        else:
-            valid_cnt = stats.get("valid", 0)
-            warn_cnt = stats.get("warnings", 0)
-            err_cnt = stats.get("errors", 0)
+    def _status_style(self, status: str) -> tuple[str, str]:
+        s = (status or "VALID").upper()
+        if s == "VALID":
+            return "#d4edda", "#155724"
+        if s == "WARNING":
+            return "#fff3cd", "#856404"
+        return "#f8d7da", "#721c24"
 
-        self.db_total_badge.setText(f"DB Gesamt: {db_total}")
-        self.csv_checked_badge.setText(f"Quelle Geprüft: {checked_cnt}")
-        self.valid_badge.setText(f"Gültig: {valid_cnt}")
-        self.warning_badge.setText(f"Warnungen: {warn_cnt}")
-        self.error_badge.setText(f"Fehler: {err_cnt}")
-
-    def _make_item(self, text: str, bg: Optional[str] = None) -> QTableWidgetItem:
+    def _cell(
+        self, text: str, bg: Optional[str] = None, fg: str = "#111111"
+    ) -> QTableWidgetItem:
         item = QTableWidgetItem(text)
         item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         if bg:
             item.setBackground(QBrush(QColor(bg)))
-            item.setForeground(QBrush(QColor("#C01A1A")))
+            item.setForeground(QBrush(QColor(fg)))
         return item
 
     def _render_db_table(self) -> None:
-        query = self.search_input.text().strip().lower()
-        dept_filter = self.department_filter.currentText()
-
-        filtered = []
-        for emp in self.employees:
-            full_name = f"{emp.first_name or ''} {emp.last_name or ''}".lower()
-            email = (emp.email or "").lower()
-            dept = (emp.department or "").strip()
-            if query and query not in full_name and query not in email:
-                continue
-            if dept_filter != "Alle" and dept != dept_filter:
-                continue
-            filtered.append(emp)
-
-        self.db_table.setSortingEnabled(False)
-        self.db_table.setRowCount(len(filtered))
-
-        for row, emp in enumerate(filtered):
-            emp_id_text = str(emp.id if emp.id is not None else "")
-            id_item = self._make_item(emp_id_text)
-            id_item.setData(Qt.ItemDataRole.UserRole, emp.id)
-
-            status = (emp.status or "VALID").upper()
-            status_bg = (
-                "#28873f"
-                if status == "VALID"
-                else "#fff3cd"
-                if status == "WARNING"
-                else "#f8d7da"
+        q = self.search_input.text().strip().lower()
+        dept = self.department_filter.currentText()
+        rows = [
+            e
+            for e in self.employees
+            if (
+                not q
+                or q in f"{e.first_name or ''} {e.last_name or ''}".lower()
+                or q in (e.email or "").lower()
             )
-
-            row_items = [
+            and (dept == "Alle" or (e.department or "").strip() == dept)
+        ]
+        self.db_table.setSortingEnabled(False)
+        self.db_table.setRowCount(len(rows))
+        for r, emp in enumerate(rows):
+            id_item = _SortableIdItem(str(emp.id if emp.id is not None else ""))
+            id_item.setData(Qt.ItemDataRole.UserRole, emp.id if emp.id is not None else 0)
+            bg, fg = self._status_style(emp.status or "VALID")
+            vals = [
                 id_item,
-                self._make_item(emp.first_name or ""),
-                self._make_item(emp.last_name or ""),
-                self._make_item(emp.email or ""),
-                self._make_item(emp.phone or ""),
-                self._make_item(emp.department or ""),
-                self._make_item(emp.birth_date or ""),
-                self._make_item(status, bg=status_bg),
+                self._cell(emp.first_name or ""),
+                self._cell(emp.last_name or ""),
+                self._cell(emp.email or ""),
+                self._cell(emp.phone or ""),
+                self._cell(emp.department or ""),
+                self._cell(emp.birth_date or ""),
+                self._cell((emp.status or "VALID").upper(), bg, fg),
             ]
-            for col, item in enumerate(row_items):
-                self.db_table.setItem(row, col, item)
-
+            for c, item in enumerate(vals):
+                self.db_table.setItem(r, c, item)
         self.db_table.setSortingEnabled(True)
 
-    def _get_selected_db_employee(self) -> Optional[Employee]:
+    def _selected_db_employee(self) -> Optional[Employee]:
         row = self.db_table.currentRow()
         if row < 0:
             return None
         id_item = self.db_table.item(row, 0)
-        if not id_item:
+        if id_item is None:
             return None
         emp_id = id_item.data(Qt.ItemDataRole.UserRole)
-        return self._employees_by_id.get(emp_id)
+        return self._employees_by_id.get(emp_id) if emp_id is not None else None
 
     def _on_add_employee(self) -> None:
-        dialog = EmployeeEditDialog(parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            emp = dialog.get_employee()
-            self.repository.add(emp)
+        dlg = EmployeeEditDialog(parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.repository.add(dlg.get_employee())
             self.refresh_all_views()
 
     def _on_edit_employee(self) -> None:
-        emp = self._get_selected_db_employee()
+        emp = self._selected_db_employee()
         if not emp:
-            self.show_info("Bitte zuerst einen Mitarbeiter in der Tabelle auswählen.")
+            self.show_info("Bitte zuerst einen Mitarbeiter auswählen.")
             return
-        dialog = EmployeeEditDialog(employee=emp, parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            updated = dialog.get_employee()
-            self.repository.update(updated)
+        dlg = EmployeeEditDialog(employee=emp, parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.repository.update(dlg.get_employee())
             self.refresh_all_views()
 
     def _on_delete_employee(self) -> None:
-        emp = self._get_selected_db_employee()
+        emp = self._selected_db_employee()
         if not emp or emp.id is None:
-            self.show_info("Bitte zuerst einen Mitarbeiter in der Tabelle auswählen.")
+            self.show_info("Bitte zuerst einen Mitarbeiter auswählen.")
             return
-        reply = QMessageBox.question(
-            self,
-            "Löschen bestätigen",
-            f"Mitarbeiter '{emp.first_name} {emp.last_name}' wirklich löschen?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if reply == QMessageBox.StandardButton.Yes:
+        if (
+            QMessageBox.question(
+                self, "Löschen", f"'{emp.first_name} {emp.last_name}' löschen?"
+            )
+            == QMessageBox.StandardButton.Yes
+        ):
             self.repository.delete(emp.id)
             self.refresh_all_views()
 
     def _on_load_csv(self) -> None:
-        file_path, _ = QFileDialog.getOpenFileName(
+        path, _ = QFileDialog.getOpenFileName(
             self,
-            "CSV-Datei laden",
+            "CSV laden",
             str(PROJECT_ROOT),
-            "CSV-Dateien (*.csv);;Alle Dateien (*)",
+            "CSV-Dateien (*.csv);;Alle (*)",
         )
-        if not file_path:
+        if not path:
             return
-
-        imported = self.importer.import_employees(file_path)
-        if not imported:
-            self.show_error(
-                "Keine gültigen Datensätze geladen. Prüfen Sie Spaltennamen (first_name, last_name, email) und Dateiinhalt."
-            )
+        rows = self.importer.import_employees(path)
+        if not rows:
+            self.show_error("Keine gültigen CSV-Datensätze gefunden.")
             return
-
-        self.current_source_path = file_path
-        self.preview_file_label.setText(f"CSV: {Path(file_path).name}")
-        self.preview_employees = imported
+        self.current_source_path = path
+        self.preview_file_label.setText(f"CSV: {Path(path).name}")
+        self.preview_employees = rows
         self._revalidate_preview()
 
-    def _parse_employees_from_xml(self, xml_path: str) -> List[Employee]:
-        """Liest <employee>-Einträge aus einer XML-Datei ein."""
-        tree = ET.parse(xml_path)
-        root = tree.getroot()
-
-        records = root.findall(".//employee")
-        if not records and root.tag.lower() == "employee":
-            records = [root]
-
-        def _text(node: ET.Element, *names: str) -> str:
-            for name in names:
-                child = node.find(name)
-                if child is not None and child.text:
-                    return child.text.strip()
-            return ""
-
-        employees: List[Employee] = []
-        for elem in records:
-            employees.append(
-                Employee(
-                    first_name=_text(elem, "first_name", "vorname"),
-                    last_name=_text(elem, "last_name", "nachname"),
-                    email=_text(elem, "email", "e-mail"),
-                    phone=_text(elem, "phone", "telefon"),
-                    department=_text(elem, "department", "abteilung"),
-                    birth_date=_text(elem, "birth_date", "geburtsdatum"),
-                    hire_date=_text(elem, "hire_date", "einstellungsdatum"),
-                )
-            )
-        return employees
-
     def _on_load_xml(self) -> None:
-        file_path, _ = QFileDialog.getOpenFileName(
+        path, _ = QFileDialog.getOpenFileName(
             self,
-            "XML-Datei laden",
+            "XML laden",
             str(PROJECT_ROOT),
-            "XML-Dateien (*.xml);;Alle Dateien (*)",
+            "XML-Dateien (*.xml);;Alle (*)",
         )
-        if not file_path:
+        if not path:
             return
-
         try:
-            imported = self._parse_employees_from_xml(file_path)
+            rows = self.xml_service.load_employees(path)
         except Exception as e:
-            self.show_error(f"Fehler beim Parsen der XML-Datei:\n{e}")
+            self.show_error(f"Fehler beim XML-Import:\n{e}")
             return
-
-        if not imported:
-            self.show_error("In der XML-Datei wurden keine <employee>-Datensätze gefunden.")
+        if not rows:
+            self.show_error("Keine <employee>-Einträge in der XML-Datei gefunden.")
             return
-
-        self.current_source_path = file_path
-        self.preview_file_label.setText(f"XML: {Path(file_path).name}")
-        self.preview_employees = imported
+        self.current_source_path = path
+        self.preview_file_label.setText(f"XML: {Path(path).name}")
+        self.preview_employees = rows
         self._revalidate_preview()
 
     def _revalidate_preview(self) -> None:
         combined = list(self.employees) + list(self.preview_employees)
-        self.validator.validate_all(combined)
-        self._render_preview_table()
-        self._update_top_stats()
-        self.statusBar().showMessage(
-            f"Vorschau validiert: {len(self.preview_employees)} Datensätze geprüft"
-        )
-
-    def _render_preview_table(self) -> None:
-        self.preview_table.setRowCount(len(self.preview_employees))
-        for idx, emp in enumerate(self.preview_employees):
-            status = (emp.status or "VALID").upper()
-            bg = (
-                "#d4edda"
-                if status == "VALID"
-                else "#fff3cd"
-                if status == "WARNING"
-                else "#f8d7da"
+        all_res = self.validator.validate_all(combined)
+        preview_ids = {id(emp) for emp in self.preview_employees}
+        self.preview_validation_results = [
+            r
+            for r in all_res
+            if any(
+                (r.employee_id is None and emp.id is None)
+                and (emp.email or "").strip().lower()
+                == (r.actual_value or "").strip().lower()
+                for emp in self.preview_employees
             )
-            err_text = emp.error_message or "; ".join(emp.validation_errors or [])
+            or not self.employees
+        ] if False else all_res
+        _ = preview_ids
 
+        self.preview_table.setRowCount(len(self.preview_employees))
+        for i, emp in enumerate(self.preview_employees):
+            bg, fg = self._status_style(emp.status or "VALID")
+            err = emp.error_message or "; ".join(emp.validation_errors or [])
             items = [
-                self._make_item(str(idx + 1)),
-                self._make_item(emp.first_name or ""),
-                self._make_item(emp.last_name or ""),
-                self._make_item(emp.email or ""),
-                self._make_item(emp.phone or ""),
-                self._make_item(emp.department or ""),
-                self._make_item(emp.birth_date or ""),
-                self._make_item(status, bg=bg),
-                self._make_item(err_text),
+                self._cell(str(i + 1)),
+                self._cell(emp.first_name or ""),
+                self._cell(emp.last_name or ""),
+                self._cell(emp.email or ""),
+                self._cell(emp.phone or ""),
+                self._cell(emp.department or ""),
+                self._cell(emp.birth_date or ""),
+                self._cell((emp.status or "VALID").upper(), bg, fg),
+                self._cell(err),
             ]
-            for col, item in enumerate(items):
-                self.preview_table.setItem(idx, col, item)
+            for c, item in enumerate(items):
+                self.preview_table.setItem(i, c, item)
+        self._update_top_stats()
 
     def _on_edit_preview_row(self) -> None:
         row = self.preview_table.currentRow()
-        if row < 0 or row >= len(self.preview_employees):
-            self.show_info("Bitte zuerst eine Vorschauzeile auswählen.")
-            return
-        dialog = EmployeeEditDialog(employee=self.preview_employees[row], parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.preview_employees[row] = dialog.get_employee()
-            self._revalidate_preview()
+        if 0 <= row < len(self.preview_employees):
+            dlg = EmployeeEditDialog(employee=self.preview_employees[row], parent=self)
+            if dlg.exec() == QDialog.DialogCode.Accepted:
+                self.preview_employees[row] = dlg.get_employee()
+                self._revalidate_preview()
 
     def _on_delete_preview_row(self) -> None:
         row = self.preview_table.currentRow()
-        if row < 0 or row >= len(self.preview_employees):
-            self.show_info("Bitte zuerst eine Vorschauzeile auswählen.")
-            return
-        del self.preview_employees[row]
-        self._revalidate_preview()
+        if 0 <= row < len(self.preview_employees):
+            del self.preview_employees[row]
+            self._revalidate_preview()
 
     def _on_commit_preview_to_db(self) -> None:
         if not self.preview_employees:
-            self.show_info("Keine Vorschaudaten zum Übernehmen vorhanden.")
+            self.show_info("Keine Vorschaudaten vorhanden.")
             return
-
-        imported_cnt = 0
-        rejected_cnt = 0
-
+        imported = rejected = 0
         for emp in self.preview_employees:
             if (emp.status or "").upper() == "INVALID":
-                rejected_cnt += 1
+                rejected += 1
                 continue
             emp.id = None
-            new_id = self.repository.add(emp)
-            emp.id = new_id
-            imported_cnt += 1
-
+            emp.id = self.repository.add(emp)
+            imported += 1
         add_hist = getattr(self.repository, "add_import_history", None)
         if callable(add_hist):
             add_hist(
-                filename=Path(self.current_source_path).name
-                if self.current_source_path
-                else "import.data",
+                filename=(
+                    Path(self.current_source_path).name
+                    if self.current_source_path
+                    else "import.data"
+                ),
                 import_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                records_imported=imported_cnt,
-                records_rejected=rejected_cnt,
+                records_imported=imported,
+                records_rejected=rejected,
             )
-
         self.preview_employees = []
+        self.preview_validation_results = []
         self.current_source_path = None
         self.preview_file_label.setText("Keine Datei geladen")
         self.refresh_all_views()
-        self.show_info(
-            f"Übernahme abgeschlossen:\n- Importiert: {imported_cnt}\n- Abgelehnt (INVALID): {rejected_cnt}"
-        )
+        self.show_info(f"Importiert: {imported}\nAbgelehnt (INVALID): {rejected}")
 
     def _on_export_csv(self) -> None:
-        file_path, _ = QFileDialog.getSaveFileName(
+        path, _ = QFileDialog.getSaveFileName(
             self,
-            "Mitarbeiter als CSV exportieren",
+            "CSV exportieren",
             str(PROJECT_ROOT / "reports" / "employees_export.csv"),
-            "CSV-Dateien (*.csv)",
+            "CSV (*.csv)",
         )
-        if not file_path:
-            return
-        if self.exporter.export(self.employees, filename=file_path):
-            self.show_info(f"CSV exportiert nach:\n{file_path}")
-        else:
-            self.show_error("CSV-Export fehlgeschlagen.")
+        if path:
+            if self.exporter.export(self.employees, filename=path):
+                self.show_info("CSV exportiert.")
+            else:
+                self.show_error("CSV-Export fehlgeschlagen.")
 
     def _on_export_xml(self) -> None:
-        file_path, _ = QFileDialog.getSaveFileName(
+        path, _ = QFileDialog.getSaveFileName(
             self,
-            "Mitarbeiter als XML exportieren",
+            "XML exportieren",
             str(PROJECT_ROOT / "reports" / "employees_export.xml"),
-            "XML-Dateien (*.xml)",
+            "XML (*.xml)",
         )
-        if not file_path:
-            return
+        if path:
+            if self.xml_service.export_employees(self.employees, filename=path):
+                self.show_info("XML exportiert.")
+            else:
+                self.show_error("XML-Export fehlgeschlagen.")
 
-        try:
-            root = ET.Element(
-                "employees",
-                attrib={
-                    "exported_at": datetime.now().isoformat(),
-                    "total": str(len(self.employees)),
-                },
-            )
-            for emp in self.employees:
-                emp_el = ET.SubElement(root, "employee")
-                fields = {
-                    "id": "" if emp.id is None else str(emp.id),
-                    "first_name": emp.first_name or "",
-                    "last_name": emp.last_name or "",
-                    "email": emp.email or "",
-                    "phone": emp.phone or "",
-                    "department": emp.department or "",
-                    "birth_date": emp.birth_date or "",
-                    "hire_date": emp.hire_date or "",
-                    "status": emp.status or "VALID",
-                }
-                for key, val in fields.items():
-                    child = ET.SubElement(emp_el, key)
-                    child.text = val
-
-            ET.indent(root, space="  ")
-            out_path = Path(file_path)
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            ET.ElementTree(root).write(out_path, encoding="utf-8", xml_declaration=True)
-            self.show_info(f"XML-Export erfolgreich gespeichert unter:\n{out_path}")
-        except Exception as e:
-            self.show_error(f"XML-Export fehlgeschlagen:\n{e}")
-
-    def _on_export_json_report(self) -> None:
-        file_path, _ = QFileDialog.getSaveFileName(
+    def _on_export_db_json_report(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
             self,
             "JSON-Report exportieren",
             str(PROJECT_ROOT / "reports" / "quality_report.json"),
-            "JSON-Dateien (*.json)",
+            "JSON (*.json)",
         )
-        if not file_path:
+        if path:
+            if self.report_generator.generate_from_employees(
+                self.employees,
+                self.validation_results,
+                filename=path,
+                directory=None,
+            ):
+                self.show_info("JSON-Report exportiert.")
+            else:
+                self.show_error("JSON-Report fehlgeschlagen.")
+
+    def _on_export_preview_json_report(self) -> None:
+        if not self.preview_employees:
+            self._on_export_db_json_report()
             return
-        if self.report_generator.generate_from_employees(
-            self.employees, self.validation_results, filename=file_path, directory=None
-        ):
-            self.show_info(f"JSON-Report gespeichert unter:\n{file_path}")
-        else:
-            self.show_error("JSON-Report konnte nicht erstellt werden.")
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "JSON-Report (Vorschau) exportieren",
+            str(PROJECT_ROOT / "reports" / "preview_quality_report.json"),
+            "JSON (*.json)",
+        )
+        if path:
+            preview_results = self.validator.validate_all(self.preview_employees)
+            if self.report_generator.generate_from_employees(
+                self.preview_employees,
+                preview_results,
+                filename=path,
+                directory=None,
+            ):
+                self.show_info("Vorschau-JSON-Report exportiert.")
+            else:
+                self.show_error("JSON-Report fehlgeschlagen.")
 
-    def show_error(self, message: str) -> None:
-        QMessageBox.critical(self, "Fehler", message)
+    def show_error(self, msg: str) -> None:
+        QMessageBox.critical(self, "Fehler", msg)
 
-    def show_info(self, message: str) -> None:
-        QMessageBox.information(self, "Information", message)
+    def show_info(self, msg: str) -> None:
+        QMessageBox.information(self, "Information", msg)
 
     def closeEvent(self, event) -> None:
         if self.db:

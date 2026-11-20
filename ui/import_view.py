@@ -54,7 +54,9 @@ class ImportView(QWidget):
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
         self.table.verticalHeader().setVisible(False)
 
         layout.addLayout(top_bar)
@@ -88,6 +90,12 @@ class ImportView(QWidget):
         self.table.setColumnCount(len(columns))
         self.table.setHorizontalHeaderLabels(columns)
 
+    @staticmethod
+    def _read_only_item(text: str) -> QTableWidgetItem:
+        item = QTableWidgetItem(text)
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        return item
+
     def _clear_table(self) -> None:
         self.current_file_path = None
         self.preview_employees = []
@@ -96,7 +104,9 @@ class ImportView(QWidget):
         self.table.clearSpans()
         self.table.setRowCount(1)
 
-        item = QTableWidgetItem("Klicken Sie auf 'CSV laden', um eine Datei auszuwählen.")
+        item = QTableWidgetItem(
+            "Klicken Sie auf 'CSV laden', um eine Datei auszuwählen."
+        )
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         item.setFlags(Qt.ItemFlag.ItemIsEnabled)
         self.table.setItem(0, 0, item)
@@ -136,18 +146,20 @@ class ImportView(QWidget):
             return
 
         preview_rows = rows[: self.PREVIEW_LIMIT]
-        employees = [
-            Employee(
-                first_name=row.get("first_name", ""),
-                last_name=row.get("last_name", ""),
-                email=row.get("email", ""),
-                phone=row.get("phone", ""),
-                department=row.get("department", ""),
-                birth_date=row.get("birth_date", ""),
-                hire_date=row.get("hire_date", ""),
+        employees: List[Employee] = []
+        for row in preview_rows:
+            lower_row = {k.strip().lower(): v for k, v in row.items()}
+            employees.append(
+                Employee(
+                    first_name=lower_row.get("first_name", ""),
+                    last_name=lower_row.get("last_name", ""),
+                    email=lower_row.get("email", ""),
+                    phone=lower_row.get("phone", ""),
+                    department=lower_row.get("department", ""),
+                    birth_date=lower_row.get("birth_date", ""),
+                    hire_date=lower_row.get("hire_date", ""),
+                )
             )
-            for row in preview_rows
-        ]
 
         self.current_file_path = file_path
         self.file_label.setText(file_path)
@@ -182,13 +194,13 @@ class ImportView(QWidget):
         self.table.clearSpans()
         self.table.setRowCount(len(self.preview_employees))
         for row, employee in enumerate(self.preview_employees):
-            self.table.setItem(row, 0, QTableWidgetItem(employee.first_name or ""))
-            self.table.setItem(row, 1, QTableWidgetItem(employee.last_name or ""))
-            self.table.setItem(row, 2, QTableWidgetItem(employee.email or ""))
-            self.table.setItem(row, 3, QTableWidgetItem(employee.phone or ""))
-            self.table.setItem(row, 4, QTableWidgetItem(employee.department or ""))
-            self.table.setItem(row, 5, QTableWidgetItem(employee.hire_date or ""))
-            self.table.setItem(row, 6, QTableWidgetItem("Vorschau"))
+            self.table.setItem(row, 0, self._read_only_item(employee.first_name or ""))
+            self.table.setItem(row, 1, self._read_only_item(employee.last_name or ""))
+            self.table.setItem(row, 2, self._read_only_item(employee.email or ""))
+            self.table.setItem(row, 3, self._read_only_item(employee.phone or ""))
+            self.table.setItem(row, 4, self._read_only_item(employee.department or ""))
+            self.table.setItem(row, 5, self._read_only_item(employee.hire_date or ""))
+            self.table.setItem(row, 6, self._read_only_item("Vorschau"))
 
     def get_import_data(self) -> List[Dict[str, Any]]:
         """Gibt die aktuellen Vorschaudaten als Liste von Dictionaries zurück."""

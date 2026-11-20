@@ -19,6 +19,8 @@ class Severity(str, Enum):
             return value
         if isinstance(value, str):
             normalized = value.strip().upper()
+            if normalized == "INFO":
+                return cls.WARNING
             for item in cls:
                 if item.value == normalized or item.name == normalized:
                     return item
@@ -39,7 +41,7 @@ class ValidationResult:
 
     def __post_init__(self) -> None:
         self.severity = Severity.from_value(self.severity)
-        self.field = str(self.field or "")
+        self.field = str(self.field or "").strip()
         self.message = str(self.message or "").strip()
 
         if not self.is_valid and not self.message:
@@ -70,8 +72,14 @@ class ValidationResult:
     @classmethod
     def from_dict(cls, data: dict) -> "ValidationResult":
         """Erstellt ein ValidationResult-Objekt aus einem Dictionary."""
+        raw_emp_id = data.get("employee_id")
+        if raw_emp_id is None or raw_emp_id == "":
+            emp_id: Optional[int] = None
+        else:
+            emp_id = int(raw_emp_id)
+
         return cls(
-            employee_id=data.get("employee_id"),
+            employee_id=emp_id,
             field=str(data.get("field") or ""),
             message=str(data.get("message") or ""),
             severity=Severity.from_value(data.get("severity", Severity.ERROR)),

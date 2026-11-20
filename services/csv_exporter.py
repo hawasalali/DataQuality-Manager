@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 class CsvExporter:
     """Ein Exporter für Mitarbeiterdaten und Validierungsfehler in CSV-Dateien."""
 
-    def __init__(self, default_filename: str = "employees_export.csv", delimiter: str = ","):
+    def __init__(
+        self, default_filename: str = "employees_export.csv", delimiter: str = ","
+    ):
         self.default_filename = default_filename
         self.delimiter = delimiter
 
@@ -53,7 +55,7 @@ class CsvExporter:
                             "department": employee.department or "",
                             "birth_date": employee.birth_date or "",
                             "hire_date": employee.hire_date or "",
-                            "status": employee.status or "",
+                            "status": (employee.status or "VALID").upper(),
                         }
                     )
 
@@ -73,7 +75,13 @@ class CsvExporter:
         """Exportiert Validierungsfehler und -warnungen in eine CSV-Datei."""
         try:
             filepath = self._resolve_path(filename, directory)
-            fieldnames = ["employee_id", "field", "severity", "message", "actual_value"]
+            fieldnames = [
+                "employee_id",
+                "field",
+                "severity",
+                "message",
+                "actual_value",
+            ]
 
             with open(filepath, mode="w", newline="", encoding="utf-8") as csv_file:
                 writer = csv.DictWriter(
@@ -83,14 +91,19 @@ class CsvExporter:
                 for res in results or []:
                     if getattr(res, "is_valid", False):
                         continue
-                    severity_val = getattr(res.severity, "value", str(res.severity))
+                    raw_severity = getattr(res, "severity", "")
+                    severity_val = getattr(raw_severity, "value", str(raw_severity))
                     writer.writerow(
                         {
-                            "employee_id": res.employee_id if res.employee_id is not None else "",
+                            "employee_id": (
+                                res.employee_id if res.employee_id is not None else ""
+                            ),
                             "field": res.field or "",
                             "severity": severity_val,
                             "message": res.message or "",
-                            "actual_value": res.actual_value if res.actual_value is not None else "",
+                            "actual_value": (
+                                res.actual_value if res.actual_value is not None else ""
+                            ),
                         }
                     )
 

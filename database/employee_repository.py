@@ -1,4 +1,5 @@
 from typing import List, Optional
+
 from models.employee import Employee
 from models.validation_result import ValidationResult
 
@@ -37,6 +38,7 @@ class EmployeeRepository:
 
     def add(self, employee: Employee) -> int:
         """Fügt einen neuen Mitarbeiter ein und gibt die neue ID zurück."""
+        status_value = (employee.status or "VALID").upper()
         new_id = self.db.execute_query(
             """
             INSERT INTO employees (
@@ -59,36 +61,43 @@ class EmployeeRepository:
                 employee.department,
                 employee.birth_date,
                 employee.hire_date,
-                employee.status,
+                status_value,
             ),
             return_lastrowid=True,
         )
-        employee.id = new_id
-        return new_id if new_id is not None else 0
+        resolved_id = int(new_id or 0)
+        employee.id = resolved_id
+        return resolved_id
 
     def get_all(self) -> List[Employee]:
         """Gibt alle gespeicherten Mitarbeiter zurück."""
-        rows = self.db.execute_query(
-            """
+        rows = (
+            self.db.execute_query(
+                """
             SELECT id, first_name, last_name, email, phone, department, birth_date, hire_date, status
             FROM employees
             ORDER BY id ASC
             """,
-            fetch=True,
-        ) or []
+                fetch=True,
+            )
+            or []
+        )
         return [self._row_to_employee(row) for row in rows]
 
     def get_by_id(self, employee_id: int) -> Optional[Employee]:
         """Sucht einen Mitarbeiter anhand seiner ID."""
-        rows = self.db.execute_query(
-            """
+        rows = (
+            self.db.execute_query(
+                """
             SELECT id, first_name, last_name, email, phone, department, birth_date, hire_date, status
             FROM employees
             WHERE id = ?
             """,
-            (employee_id,),
-            fetch=True,
-        ) or []
+                (employee_id,),
+                fetch=True,
+            )
+            or []
+        )
         return self._row_to_employee(rows[0]) if rows else None
 
     def update(self, employee: Employee) -> None:
@@ -96,6 +105,7 @@ class EmployeeRepository:
         if employee.id is None:
             raise ValueError("Mitarbeiter ohne ID kann nicht aktualisiert werden.")
 
+        status_value = (employee.status or "VALID").upper()
         self.db.execute_query(
             """
             UPDATE employees
@@ -118,7 +128,7 @@ class EmployeeRepository:
                 employee.department,
                 employee.birth_date,
                 employee.hire_date,
-                employee.status,
+                status_value,
                 employee.id,
             ),
         )
@@ -146,14 +156,17 @@ class EmployeeRepository:
 
     def get_all_validation_results(self) -> List[ValidationResult]:
         """Lädt alle gespeicherten Validierungsergebnisse."""
-        rows = self.db.execute_query(
-            """
+        rows = (
+            self.db.execute_query(
+                """
             SELECT employee_id, column_name, error_message, severity
             FROM validation_results
             ORDER BY id ASC
             """,
-            fetch=True,
-        ) or []
+                fetch=True,
+            )
+            or []
+        )
         results: List[ValidationResult] = []
         for row in rows:
             results.append(
@@ -171,7 +184,11 @@ class EmployeeRepository:
         self.db.execute_query("DELETE FROM validation_results")
 
     def add_import_history(
-        self, filename: str, import_date: str, records_imported: int, records_rejected: int
+        self,
+        filename: str,
+        import_date: str,
+        records_imported: int,
+        records_rejected: int,
     ) -> None:
         """Speichert einen Eintrag in der Import-Historie."""
         self.db.execute_query(
@@ -184,14 +201,17 @@ class EmployeeRepository:
 
     def get_import_history(self) -> List[dict]:
         """Gibt alle Einträge der Import-Historie zurück."""
-        rows = self.db.execute_query(
-            """
+        rows = (
+            self.db.execute_query(
+                """
             SELECT id, filename, import_date, records_imported, records_rejected
             FROM import_history
             ORDER BY id DESC
             """,
-            fetch=True,
-        ) or []
+                fetch=True,
+            )
+            or []
+        )
         return [
             {
                 "id": self._get_col(row, "id", 0),

@@ -45,6 +45,17 @@ class CsvImporter:
         """Prüft, ob eine Zeile komplett leer ist."""
         return all(not (val or "").strip() for val in row.values())
 
+    @staticmethod
+    def _detect_delimiter(sample: str) -> str:
+        """Ermittelt das wahrscheinlichste Trennzeichen (; , oder Tab)."""
+        counts = {
+            ";": sample.count(";"),
+            ",": sample.count(","),
+            "\t": sample.count("\t"),
+        }
+        best = max(counts, key=lambda k: counts[k])
+        return best if counts[best] > 0 else ","
+
     def load_rows(
         self, filepath: Union[str, Path]
     ) -> Tuple[Optional[List[str]], List[Dict[str, str]], Optional[str]]:
@@ -70,7 +81,7 @@ class CsvImporter:
                 with open(path, mode="r", encoding=encoding, newline="") as f:
                     sample = f.read(2048)
                     f.seek(0)
-                    delimiter = ";" if sample.count(";") > sample.count(",") else ","
+                    delimiter = self._detect_delimiter(sample)
                     reader = csv.DictReader(f, delimiter=delimiter)
 
                     if not reader.fieldnames:
@@ -94,7 +105,11 @@ class CsvImporter:
                             if not key:
                                 continue
                             if isinstance(v, list):
-                                val = ", ".join(str(item).strip() for item in v if item is not None)
+                                val = ", ".join(
+                                    str(item).strip()
+                                    for item in v
+                                    if item is not None
+                                )
                             else:
                                 val = v.strip() if v is not None else ""
                             cleaned_row[key] = val
@@ -124,8 +139,12 @@ class CsvImporter:
         """Prüft, ob alle Pflichtspalten vorhanden sind. Gibt fehlende Spalten zurück."""
         if not headers:
             return list(self.REQUIRED_COLUMNS)
-        normalized_headers = {h.strip() for h in headers if h}
-        return [col for col in self.REQUIRED_COLUMNS if col not in normalized_headers]
+        normalized_headers = {h.strip().lower() for h in headers if h}
+        return [
+            col
+            for col in self.REQUIRED_COLUMNS
+            if col.lower() not in normalized_headers
+        ]
 
     def preview_csv(
         self, filepath: Union[str, Path], limit: int = 10
@@ -154,16 +173,19 @@ class CsvImporter:
 
         employees: List[Employee] = []
         for row in rows:
+            lower_row = {k.strip().lower(): v for k, v in row.items()}
             employee = Employee(
-                first_name=row.get("first_name", ""),
-                last_name=row.get("last_name", ""),
-                email=row.get("email", ""),
-                phone=row.get("phone", ""),
-                department=row.get("department", ""),
-                birth_date=row.get("birth_date", ""),
-                hire_date=row.get("hire_date", ""),
+                first_name=lower_row.get("first_name", ""),
+                last_name=lower_row.get("last_name", ""),
+                email=lower_row.get("email", ""),
+                phone=lower_row.get("phone", ""),
+                department=lower_row.get("department", ""),
+                birth_date=lower_row.get("birth_date", ""),
+                hire_date=lower_row.get("hire_date", ""),
             )
             employees.append(employee)
 
-        logger.info("Erfolgreich %d Mitarbeiter aus %s eingelesen.", len(employees), filepath)
+        logger.info(
+            "Erfolgreich %d Mitarbeiter aus %s eingelesen.", len(employees), filepath
+        )
         return employees

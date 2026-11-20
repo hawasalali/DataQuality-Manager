@@ -20,7 +20,9 @@ def test_validate_email_valid(validator: DataValidator):
         "user@sub.domain.co.uk",
     ]
     for email in valid_emails:
-        assert validator.validate_email(email) is True, f"E-Mail {email} sollte gültig sein."
+        assert validator.validate_email(email) is True, (
+            f"E-Mail {email} sollte gültig sein."
+        )
 
 
 def test_validate_email_invalid(validator: DataValidator):
@@ -35,7 +37,9 @@ def test_validate_email_invalid(validator: DataValidator):
         "max@test.de.",
     ]
     for email in invalid_emails:
-        assert validator.validate_email(email) is False, f"E-Mail {email} sollte ungültig sein."
+        assert validator.validate_email(email) is False, (
+            f"E-Mail {email} sollte ungültig sein."
+        )
 
 
 def test_validate_phone_valid(validator: DataValidator):
@@ -49,7 +53,9 @@ def test_validate_phone_valid(validator: DataValidator):
         "123456",
     ]
     for phone in valid_phones:
-        assert validator.validate_phone(phone) is True, f"Telefonnummer {phone} sollte gültig sein."
+        assert validator.validate_phone(phone) is True, (
+            f"Telefonnummer {phone} sollte gültig sein."
+        )
 
 
 def test_validate_phone_invalid(validator: DataValidator):
@@ -62,7 +68,9 @@ def test_validate_phone_invalid(validator: DataValidator):
         "++123456789",
     ]
     for phone in invalid_phones:
-        assert validator.validate_phone(phone) is False, f"Telefonnummer {phone} sollte ungültig sein."
+        assert validator.validate_phone(phone) is False, (
+            f"Telefonnummer {phone} sollte ungültig sein."
+        )
 
 
 def test_validate_date_valid(validator: DataValidator):
@@ -74,7 +82,9 @@ def test_validate_date_valid(validator: DataValidator):
         "2023-04-30",
     ]
     for date in valid_dates:
-        assert validator._validate_date(date) is True, f"Datum {date} sollte gültig sein."
+        assert validator._validate_date(date) is True, (
+            f"Datum {date} sollte gültig sein."
+        )
 
 
 def test_validate_date_invalid(validator: DataValidator):
@@ -90,7 +100,9 @@ def test_validate_date_invalid(validator: DataValidator):
         "not-a-date",
     ]
     for date in invalid_dates:
-        assert validator._validate_date(date) is False, f"Datum {date} sollte ungültig sein."
+        assert validator._validate_date(date) is False, (
+            f"Datum {date} sollte ungültig sein."
+        )
 
 
 def test_validate_employee_valid(validator: DataValidator):
@@ -102,6 +114,7 @@ def test_validate_employee_valid(validator: DataValidator):
         email="max@test.de",
         phone="0123456789",
         department="IT",
+        birth_date="1990-05-14",
         hire_date="2020-01-01",
     )
     results = validator.validate_employee(employee)
@@ -117,27 +130,87 @@ def test_validate_employee_invalid(validator: DataValidator):
         email="invalid-email",
         phone="abc",
         department="",
+        birth_date="1990/05/14",
         hire_date="2020-13-01",
     )
     results = validator.validate_employee(employee)
     fields_with_errors = {r.field for r in results}
 
-    assert len(results) >= 5
+    assert len(results) >= 6
     assert "first_name" in fields_with_errors
     assert "last_name" in fields_with_errors
     assert "email" in fields_with_errors
     assert "phone" in fields_with_errors
+    assert "birth_date" in fields_with_errors
     assert "hire_date" in fields_with_errors
+
+
+def test_validate_hire_date_before_birth_date(validator: DataValidator):
+    """Testet, dass ein Einstellungsdatum vor oder gleich dem Geburtsdatum abgelehnt wird."""
+    employee = Employee(
+        first_name="Max",
+        last_name="Mustermann",
+        email="max@test.de",
+        birth_date="2000-01-01",
+        hire_date="1999-12-31",
+    )
+    results = validator.validate_employee(employee)
+    assert len(results) == 1
+    assert results[0].field == "hire_date"
+    assert results[0].severity == Severity.ERROR
+
+
+def test_find_duplicates_and_duplicate_emails(validator: DataValidator):
+    """Testet die Duplikat-Suche anhand der E-Mail-Adresse."""
+    employees = [
+        Employee(first_name="Max", last_name="Mustermann", email="max@test.de"),
+        Employee(first_name="Max", last_name="Kopie", email="MAX@TEST.DE"),
+        Employee(first_name="Anna", last_name="Schmidt", email="anna@test.de"),
+    ]
+    duplicates = validator.find_duplicates(employees)
+    assert "max@test.de" in duplicates
+    assert len(duplicates["max@test.de"]) == 2
+    assert validator.get_duplicate_emails(employees) == {"max@test.de"}
 
 
 def test_validate_project_sample_csv(validator: DataValidator):
     """Testet die 5 Beispiel-Datensätze aus dem Projektplan."""
     employees = [
-        Employee(first_name="Max", last_name="Mustermann", email="max@test.de", phone="0171234567", department="IT"),
-        Employee(first_name="Anna", last_name="Schmidt", email="anna@test.de", phone="0171234568", department="HR"),
-        Employee(first_name="Peter", last_name="", email="peter@test.de", phone="0171234569", department="IT"),
-        Employee(first_name="Max", last_name="Mustermann", email="max@test.de", phone="0171234567", department="IT"),
-        Employee(first_name="Lisa", last_name="Meyer", email="invalid-email", phone="0171234560", department="Sales"),
+        Employee(
+            first_name="Max",
+            last_name="Mustermann",
+            email="max@test.de",
+            phone="0171234567",
+            department="IT",
+        ),
+        Employee(
+            first_name="Anna",
+            last_name="Schmidt",
+            email="anna@test.de",
+            phone="0171234568",
+            department="HR",
+        ),
+        Employee(
+            first_name="Peter",
+            last_name="",
+            email="peter@test.de",
+            phone="0171234569",
+            department="IT",
+        ),
+        Employee(
+            first_name="Max",
+            last_name="Mustermann",
+            email="max@test.de",
+            phone="0171234567",
+            department="IT",
+        ),
+        Employee(
+            first_name="Lisa",
+            last_name="Meyer",
+            email="invalid-email",
+            phone="0171234560",
+            department="Sales",
+        ),
     ]
 
     results = validator.validate_all(employees)

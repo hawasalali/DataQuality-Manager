@@ -34,7 +34,7 @@ class Employee:
             "department": self.department,
             "birth_date": self.birth_date,
             "hire_date": self.hire_date,
-            "status": self.status,
+            "status": (self.status or "VALID").upper(),
             "error_message": self.error_message,
             "validation_errors": list(self.validation_errors),
         }
@@ -42,19 +42,27 @@ class Employee:
     @classmethod
     def from_dict(cls, data: dict) -> "Employee":
         """Erstellt eine Employee-Instanz aus einem Dictionary."""
+        raw_id = data.get("id")
+        if raw_id is None or raw_id == "":
+            emp_id: Optional[int] = None
+        else:
+            emp_id = int(raw_id)
+
         raw_errors = data.get("validation_errors")
         errors = [str(err) for err in raw_errors] if isinstance(raw_errors, list) else []
 
+        raw_status = str(data.get("status") or "VALID").strip().upper() or "VALID"
+
         return cls(
-            id=data.get("id"),
-            first_name=str(data.get("first_name") or ""),
-            last_name=str(data.get("last_name") or ""),
-            email=str(data.get("email") or ""),
-            phone=str(data.get("phone") or ""),
-            department=str(data.get("department") or ""),
-            birth_date=str(data.get("birth_date") or ""),
-            hire_date=str(data.get("hire_date") or ""),
-            status=str(data.get("status") or "VALID"),
+            id=emp_id,
+            first_name=str(data.get("first_name") or "").strip(),
+            last_name=str(data.get("last_name") or "").strip(),
+            email=str(data.get("email") or "").strip(),
+            phone=str(data.get("phone") or "").strip(),
+            department=str(data.get("department") or "").strip(),
+            birth_date=str(data.get("birth_date") or "").strip(),
+            hire_date=str(data.get("hire_date") or "").strip(),
+            status=raw_status,
             error_message=str(data.get("error_message") or ""),
             validation_errors=errors,
         )

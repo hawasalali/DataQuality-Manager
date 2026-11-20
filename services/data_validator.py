@@ -25,7 +25,7 @@ class DataValidator:
     def validate_phone(self, phone: str) -> bool:
         """Validiert eine Telefonnummer (erlaubt Ziffern, +, Leerzeichen, -, /, Klammern)."""
         if not phone or not str(phone).strip():
-            return True  # Optionales Feld, wird nur geprüft wenn befüllt
+            return True
         cleaned = str(phone).strip()
         if not re.match(self.PHONE_PATTERN, cleaned):
             return False
@@ -56,7 +56,6 @@ class DataValidator:
         birth_date = str(employee.birth_date or "")
         hire_date = str(employee.hire_date or "")
 
-        # Vorname (Pflichtfeld)
         if not first_name.strip():
             errors.append(
                 ValidationResult(
@@ -69,7 +68,6 @@ class DataValidator:
                 )
             )
 
-        # Nachname (Pflichtfeld)
         if not last_name.strip():
             errors.append(
                 ValidationResult(
@@ -82,7 +80,6 @@ class DataValidator:
                 )
             )
 
-        # E-Mail (Pflichtfeld + Format)
         if not email.strip():
             errors.append(
                 ValidationResult(
@@ -108,7 +105,6 @@ class DataValidator:
                 )
             )
 
-        # Telefonnummer (optional, Format prüfen wenn vorhanden)
         if phone.strip() and not self.validate_phone(phone):
             errors.append(
                 ValidationResult(
@@ -122,33 +118,53 @@ class DataValidator:
                 )
             )
 
-        # Geburtsdatum (optional, Format prüfen wenn vorhanden)
-        if birth_date.strip() and not self._validate_date(birth_date):
-            errors.append(
-                ValidationResult(
-                    employee_id=employee.id,
-                    field="birth_date",
-                    message="Ungültiges Geburtsdatum. Format: YYYY-MM-DD.",
-                    severity=Severity.ERROR,
-                    is_valid=False,
-                    expected_format="YYYY-MM-DD",
-                    actual_value=employee.birth_date,
+        birth_valid = False
+        if birth_date.strip():
+            birth_valid = self._validate_date(birth_date)
+            if not birth_valid:
+                errors.append(
+                    ValidationResult(
+                        employee_id=employee.id,
+                        field="birth_date",
+                        message="Ungültiges Geburtsdatum. Format: YYYY-MM-DD.",
+                        severity=Severity.ERROR,
+                        is_valid=False,
+                        expected_format="YYYY-MM-DD",
+                        actual_value=employee.birth_date,
+                    )
                 )
-            )
 
-        # Einstellungsdatum (optional, Format prüfen wenn vorhanden)
-        if hire_date.strip() and not self._validate_date(hire_date):
-            errors.append(
-                ValidationResult(
-                    employee_id=employee.id,
-                    field="hire_date",
-                    message="Ungültiges Einstellungsdatum. Format: YYYY-MM-DD.",
-                    severity=Severity.ERROR,
-                    is_valid=False,
-                    expected_format="YYYY-MM-DD",
-                    actual_value=employee.hire_date,
+        hire_valid = False
+        if hire_date.strip():
+            hire_valid = self._validate_date(hire_date)
+            if not hire_valid:
+                errors.append(
+                    ValidationResult(
+                        employee_id=employee.id,
+                        field="hire_date",
+                        message="Ungültiges Einstellungsdatum. Format: YYYY-MM-DD.",
+                        severity=Severity.ERROR,
+                        is_valid=False,
+                        expected_format="YYYY-MM-DD",
+                        actual_value=employee.hire_date,
+                    )
                 )
-            )
+
+        if birth_valid and hire_valid:
+            bd = datetime.strptime(birth_date.strip(), "%Y-%m-%d")
+            hd = datetime.strptime(hire_date.strip(), "%Y-%m-%d")
+            if bd >= hd:
+                errors.append(
+                    ValidationResult(
+                        employee_id=employee.id,
+                        field="hire_date",
+                        message="Einstellungsdatum muss nach dem Geburtsdatum liegen.",
+                        severity=Severity.ERROR,
+                        is_valid=False,
+                        expected_format="YYYY-MM-DD",
+                        actual_value=employee.hire_date,
+                    )
+                )
 
         return errors
 

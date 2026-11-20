@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS employees (
     department TEXT DEFAULT '',
     birth_date TEXT DEFAULT '',
     hire_date TEXT DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'VALID'
+    status TEXT NOT NULL DEFAULT 'VALID' CHECK (status IN ('VALID', 'WARNING', 'INVALID'))
 );
 
 CREATE TABLE IF NOT EXISTS validation_results (
@@ -31,3 +31,4 @@ CREATE INDEX IF NOT EXISTS idx_employees_email ON employees(email);
 CREATE INDEX IF NOT EXISTS idx_employees_department ON employees(department);
 CREATE INDEX IF NOT EXISTS idx_employees_status ON employees(status);
 CREATE INDEX IF NOT EXISTS idx_validation_results_employee_id ON validation_results(employee_id);
+CREATE INDEX IF NOT EXISTS idx_import_history_import_date ON import_history(import_date);

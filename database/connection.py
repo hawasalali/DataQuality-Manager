@@ -1,7 +1,7 @@
-import sqlite3
 import logging
+import sqlite3
 from pathlib import Path
-from typing import Optional, List, Tuple, Any, Union
+from typing import Any, List, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class DatabaseConnection:
             if str(db_file.parent) not in ("", "."):
                 db_file.parent.mkdir(parents=True, exist_ok=True)
 
-            self.conn = sqlite3.connect(str(db_file))
+            self.conn = sqlite3.connect(str(db_file), check_same_thread=False)
             self.conn.execute("PRAGMA foreign_keys = ON;")
             self.conn.row_factory = sqlite3.Row
         except sqlite3.Error as e:
@@ -59,13 +59,15 @@ class DatabaseConnection:
 
             if fetch:
                 rows = cursor.fetchall()
-                logger.debug("Abfrage erfolgreich: %s... (Ergebnisse: %d)", query[:50], len(rows))
+                logger.debug(
+                    "Abfrage erfolgreich: %s... (Ergebnisse: %d)", query[:50], len(rows)
+                )
                 return rows
 
             self.conn.commit()
             logger.debug("Abfrage erfolgreich: %s...", query[:50])
             if return_lastrowid:
-                return cursor.lastrowid
+                return int(cursor.lastrowid or 0)
             return None
 
         except sqlite3.Error as e:
@@ -106,9 +108,13 @@ class DatabaseConnection:
 
         except FileNotFoundError as e:
             logger.error("Schema-Datei nicht gefunden: %s", resolved_schema)
-            raise FileNotFoundError(f"Die Datei {resolved_schema} wurde nicht gefunden.") from e
+            raise FileNotFoundError(
+                f"Die Datei {resolved_schema} wurde nicht gefunden."
+            ) from e
         except sqlite3.Error as e:
             if self.conn:
                 self.conn.rollback()
             logger.error("Fehler beim Erstellen der Tabellen: %s", e)
-            raise RuntimeError(f"Fehler beim Ausführen des SQL-Schemas: {e}") from e
+            raise RuntimeError(
+                f"Fehler beim Ausführen des SQL-Schemas: {e}"
+            ) from e
