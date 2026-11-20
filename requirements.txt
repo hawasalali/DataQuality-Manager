@@ -1,0 +1,9 @@
+# GUI-Framework (Desktop-Oberfläche)
+PyQt6>=6.6.0
+
+# Test-Framework
+pytest>=8.0.0
+
+# Optionale Entwicklungswerkzeuge (bei Bedarf einkommentieren)
+# black>=24.0.0
+# ruff>=0.5.0
